@@ -1,0 +1,17 @@
+# Kustomize lets Kubernetes resources be applied as one local-only learning stack.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - mongodb/deployment.yaml
+  - mongodb/service.yaml
+  - redis/deployment.yaml
+  - redis/service.yaml
+  - validation/deployment.yaml
+  - validation/service.yaml
+  - security/deployment.yaml
+  - security/service.yaml
+  - ocr/deployment.yaml
+  - ocr/service.yaml
+  - gateway/deployment.yaml
+  - gateway/service.yaml

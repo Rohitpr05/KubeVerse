@@ -1,0 +1,8 @@
+# Local environment overrides and generated runtime files should not be shared.
+.env
+.env.local
+node_modules/
+coverage/
+dist/
+*.log
+.DS_Store

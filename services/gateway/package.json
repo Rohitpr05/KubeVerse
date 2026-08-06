@@ -1,0 +1,6 @@
+{
+  "name": "@simulator/gateway",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@simulator/shared": "1.0.0" }
+}

@@ -1,0 +1,8 @@
+# Keep image contexts small and prevent local runtime data from entering application images.
+.git
+.env
+.env.local
+node_modules
+coverage
+dist
+*.log

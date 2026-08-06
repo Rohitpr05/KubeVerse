@@ -1,0 +1,27 @@
+# Security is independently deployed and addressed internally by the security Service.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: security
+  namespace: k8s-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: security }
+  template:
+    metadata:
+      labels: { app: security }
+    spec:
+      containers:
+        - name: security
+          image: localhost:5000/k8s-dockersimulator-security:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3002
+          env:
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          readinessProbe:
+            httpGet: { path: /ready, port: 3002 }
+          livenessProbe:
+            httpGet: { path: /live, port: 3002 }

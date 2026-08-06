@@ -1,0 +1,24 @@
+# Redis is an ephemeral local cache for learning; data is intentionally not durable in this manifest.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: k8s-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: localhost:5000/k8s-dockersimulator-redis:7.4-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+          livenessProbe:
+            exec: { command: ["redis-cli", "ping"] }

@@ -1,0 +1,27 @@
+# OCR is independently deployed; its image comes from the local registry rather than the host Docker cache.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ocr
+  namespace: k8s-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ocr }
+  template:
+    metadata:
+      labels: { app: ocr }
+    spec:
+      containers:
+        - name: ocr
+          image: localhost:5000/k8s-dockersimulator-ocr:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3003
+          env:
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          readinessProbe:
+            httpGet: { path: /ready, port: 3003 }
+          livenessProbe:
+            httpGet: { path: /live, port: 3003 }

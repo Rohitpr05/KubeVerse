@@ -1,0 +1,19 @@
+# This registry is separate from the application Compose stack: it exists only for Kubernetes image distribution.
+name: k8s-simulator-registry
+
+services:
+  registry:
+    image: registry:2
+    ports:
+      - "5000:5000"
+    volumes:
+      - local-registry-data:/var/lib/registry
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:5000/v2/ >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  local-registry-data:

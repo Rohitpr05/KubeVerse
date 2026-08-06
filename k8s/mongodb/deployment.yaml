@@ -1,0 +1,31 @@
+# MongoDB is intentionally a simple local learning deployment with ephemeral storage, not a production database design.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: k8s-simulator
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: mongodb }
+  template:
+    metadata:
+      labels: { app: mongodb }
+    spec:
+      containers:
+        - name: mongodb
+          image: localhost:5000/k8s-dockersimulator-mongodb:8.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          readinessProbe:
+            exec: { command: ["mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"] }
+          livenessProbe:
+            exec: { command: ["mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"] }
+      volumes:
+        - name: data
+          emptyDir: {}

@@ -1,0 +1,37 @@
+# Gateway is the public application workload and resolves downstream Services by Kubernetes DNS name.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: k8s-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: gateway }
+  template:
+    metadata:
+      labels: { app: gateway }
+    spec:
+      containers:
+        - name: gateway
+          image: localhost:5000/k8s-dockersimulator-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: VALIDATION_URL
+              value: http://validation:3001
+            - name: SECURITY_URL
+              value: http://security:3002
+            - name: OCR_URL
+              value: http://ocr:3003
+            - name: MONGO_URL
+              value: mongodb://mongodb:27017/simulator
+            - name: REDIS_URL
+              value: redis://redis:6379
+          readinessProbe:
+            httpGet: { path: /ready, port: 3000 }
+          livenessProbe:
+            httpGet: { path: /live, port: 3000 }

@@ -1,0 +1,99 @@
+# Local-only topology. Docker Compose service names provide the internal DNS used by the Gateway.
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      # The stock Nginx image has no HTTP client; its own config test is the portable probe here.
+      test: ["CMD-SHELL", "nginx -t"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    environment:
+      INSTANCE_ID: gateway-local
+      VALIDATION_URL: http://validation:3001
+      SECURITY_URL: http://security:3002
+      OCR_URL: http://ocr:3003
+      MONGO_URL: mongodb://mongodb:27017/simulator
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      validation:
+        condition: service_healthy
+      security:
+        condition: service_healthy
+      ocr:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck: &node_healthcheck
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:' + process.env.PORT + '/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  validation:
+    build:
+      context: .
+      dockerfile: services/validation/Dockerfile
+    environment:
+      INSTANCE_ID: validation-local
+    healthcheck: *node_healthcheck
+
+  security:
+    build:
+      context: .
+      dockerfile: services/security/Dockerfile
+    environment:
+      INSTANCE_ID: security-local
+    healthcheck: *node_healthcheck
+
+  ocr:
+    build:
+      context: .
+      dockerfile: services/ocr/Dockerfile
+    environment:
+      INSTANCE_ID: ocr-local
+    healthcheck: *node_healthcheck
+
+  mongodb:
+    # 8.2 supports current local Linux kernels; this remains a local container only.
+    image: mongo:8.2
+    environment:
+      MONGO_INITDB_DATABASE: simulator
+    volumes:
+      - mongo-data:/data/db
+      - ./infra/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.runCommand({ ping: 1 }).ok\" | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  mongo-data:
+  redis-data:

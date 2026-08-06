@@ -1,0 +1,13 @@
+{
+  "name": "local-microservice-simulator",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "services/*"],
+  "scripts": {
+    "start:gateway": "node services/gateway/src/server.js",
+    "start:validation": "node services/validation/src/server.js",
+    "start:security": "node services/security/src/server.js",
+    "start:ocr": "node services/ocr/src/server.js",
+    "test": "node --test"
+  }
+}
