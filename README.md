@@ -64,3 +64,25 @@ Kubernetes pulls images from a local registry rather than relying on Docker's
 host image cache. The existing Docker Compose workflow remains unchanged. See
 [k8s/README.md](k8s/README.md) for the local registry, build/push, deployment,
 and image-update workflow.
+
+## Interactive learning platform roadmap
+
+The next evolution is a real-cluster visualization and learning platform. Its
+architecture, real-versus-simulated data rules, technology choices, and phased
+implementation plan are in
+[docs/interactive-platform-architecture.md](docs/interactive-platform-architecture.md).
+
+## Phase 1: Cluster Explorer
+
+With a working `kubectl` context, start the read-only Kubernetes observer and
+visualizer:
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The platform API is available at
+`http://localhost:4000/snapshot`, and `http://localhost:4000/events` is its
+Server-Sent Events stream. The observer reads the selected local kubeconfig
+context; it does not modify cluster resources.

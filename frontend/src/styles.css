@@ -1,0 +1,25 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #e2e8f0; background: #0b1120; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 900px; }
+.app-shell { height: 100vh; display: grid; grid-template-rows: auto auto 1fr; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; background: #111827; border-bottom: 1px solid #334155; }
+h1 { margin: 0; font-size: 1.35rem; }
+.eyebrow { color: #94a3b8; font-size: .7rem; font-weight: 700; letter-spacing: .12em; margin: 0 0 4px; }
+.connection { color: #cbd5e1; font-size: .85rem; max-width: 420px; text-align: right; }
+.online-dot, .offline-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.online-dot { background: #22c55e; }.offline-dot { background: #f97316; }
+.observer-warning { background: #7c2d12; color: #ffedd5; padding: 7px 22px; font-size: .82rem; }
+.explorer-layout { min-height: 0; display: grid; grid-template-columns: minmax(650px, 1fr) 330px; }
+.canvas { min-height: 0; background: #0f172a; }
+.inspector { overflow: auto; background: #111827; border-left: 1px solid #334155; padding: 20px; }
+.inspector.empty { color: #94a3b8; line-height: 1.5; }
+.inspector h2 { overflow-wrap: anywhere; margin: 0 0 20px; font-size: 1.15rem; }
+.inspector h3 { margin: 24px 0 8px; font-size: .9rem; color: #cbd5e1; }
+dl { display: grid; grid-template-columns: 88px 1fr; gap: 9px; font-size: .84rem; margin: 0; } dt { color: #94a3b8; } dd { margin: 0; overflow-wrap: anywhere; }
+ul { list-style: none; padding: 0; margin: 0; font-size: .77rem; } li { padding: 5px 0; border-bottom: 1px solid #1e293b; overflow-wrap: anywhere; } code { color: #93c5fd; }
+.muted { color: #94a3b8; font-size: .85rem; }
+.resource-node { width: 185px; border: 1px solid var(--accent); border-left: 5px solid var(--accent); border-radius: 7px; background: #172033; padding: 9px 11px; box-shadow: 0 4px 12px #02061777; cursor: pointer; }
+.resource-node.selected { box-shadow: 0 0 0 2px #f8fafc, 0 4px 12px #02061777; }
+.resource-kind { color: var(--accent); font-weight: 700; font-size: .67rem; letter-spacing: .08em; text-transform: uppercase; }
+.resource-name { font-weight: 650; padding: 4px 0; font-size: .86rem; overflow-wrap: anywhere; }.resource-status { color: #cbd5e1; font-size: .73rem; }
+.react-flow__attribution { display: none; }

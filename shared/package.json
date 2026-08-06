@@ -3,5 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "exports": "./src/index.js"
+  "exports": {
+    ".": "./src/index.js",
+    "./platform-contract": "./platform-contract.ts"
+  }
 }

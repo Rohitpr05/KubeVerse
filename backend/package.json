@@ -1,0 +1,20 @@
+{
+  "name": "@simulator/platform-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "^1.4.0",
+    "@simulator/shared": "1.0.0",
+    "@fastify/cors": "^11.1.0",
+    "fastify": "^5.3.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}
