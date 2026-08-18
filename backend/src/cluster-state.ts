@@ -1,137 +1,240 @@
-// This cache is the observer's read model. It isolates the browser from raw Kubernetes API responses.
-import type { ClusterKind, ClusterResource, ClusterSnapshot, ClusterUpdate, TimelineEvent } from '@simulator/shared/platform-contract';
+// ResourceCache is the platform's durable-in-process read model for all observer APIs.
+import type {
+  ClusterKind, ClusterResource, ClusterSnapshot, ClusterStatistics, ClusterUpdate, ObservedKind,
+  ResourceAction, ResourceDetail, ResourceHistoryEntry, TimelineEvent
+} from '@simulator/shared/platform-contract';
+import { clusterKinds } from '@simulator/shared/platform-contract';
+import { stringify } from 'yaml';
+import { ResourceGraphBuilder } from './resource-graph.js';
 
-type KubernetesObject = Record<string, any>;
-type ResourceMap = Map<string, ClusterResource>;
+export type KubernetesObject = Record<string, any>;
+type StoredResource = { resource: ClusterResource; raw: KubernetesObject };
 
-const resourceKinds: ClusterKind[] = ['Namespace', 'Deployment', 'ReplicaSet', 'Pod', 'Service', 'Node'];
+const storedKinds = clusterKinds.filter((kind) => kind !== 'Container');
 
-function resourceUid(resource: KubernetesObject): string {
-  const metadata = resource.metadata ?? {};
-  return metadata.uid ?? `${resource.kind}:${metadata.namespace ?? '_cluster'}:${metadata.name}`;
+function uidFor(raw: KubernetesObject): string {
+  const metadata = raw.metadata ?? {};
+  return metadata.uid ?? `${raw.kind}:${metadata.namespace ?? '_cluster'}:${metadata.name}`;
 }
 
-function isoTimestamp(value: unknown): string | undefined {
+function toTimestamp(value: unknown): string | undefined {
   if (!value) return undefined;
   if (value instanceof Date) return value.toISOString();
   return typeof value === 'string' ? value : String(value);
 }
 
-function podStatus(resource: KubernetesObject): string {
-  const phase = resource.status?.phase ?? 'Unknown';
-  const ready = resource.status?.conditions?.find((condition: any) => condition.type === 'Ready')?.status;
+function conditions(raw: KubernetesObject): ClusterResource['conditions'] {
+  return (raw.status?.conditions ?? []).map((condition: any) => ({ type: condition.type, status: condition.status, reason: condition.reason, message: condition.message }));
+}
+
+function workloadStatus(raw: KubernetesObject): string {
+  const desired = raw.spec?.replicas ?? 1;
+  return `${raw.status?.readyReplicas ?? 0}/${desired} Ready`;
+}
+
+function podStatus(raw: KubernetesObject): string {
+  const phase = raw.status?.phase ?? 'Unknown';
+  const ready = raw.status?.conditions?.find((condition: any) => condition.type === 'Ready')?.status;
   return ready === 'True' ? `${phase} (Ready)` : phase;
 }
 
-function workloadStatus(resource: KubernetesObject): string {
-  const desired = resource.spec?.replicas ?? 1;
-  const ready = resource.status?.readyReplicas ?? 0;
-  return `${ready}/${desired} Ready`;
-}
-
-function statusFor(kind: ClusterKind, resource: KubernetesObject): string {
-  if (kind === 'Namespace') return resource.status?.phase ?? 'Unknown';
-  if (kind === 'Pod') return podStatus(resource);
-  if (kind === 'Deployment' || kind === 'ReplicaSet') return workloadStatus(resource);
-  if (kind === 'Service') return resource.spec?.type ?? 'ClusterIP';
-  if (kind === 'Node') {
-    const ready = resource.status?.conditions?.find((condition: any) => condition.type === 'Ready')?.status;
-    return ready === 'True' ? 'Ready' : 'NotReady';
+function resourceStatus(kind: ClusterKind, raw: KubernetesObject): string {
+  switch (kind) {
+    case 'Namespace': return raw.status?.phase ?? 'Unknown';
+    case 'Node': return raw.status?.conditions?.find((condition: any) => condition.type === 'Ready')?.status === 'True' ? 'Ready' : 'NotReady';
+    case 'Pod': return podStatus(raw);
+    case 'Deployment': case 'ReplicaSet': case 'StatefulSet': return workloadStatus(raw);
+    case 'DaemonSet': return `${raw.status?.numberReady ?? 0}/${raw.status?.desiredNumberScheduled ?? 0} Ready`;
+    case 'Job': return raw.status?.succeeded ? 'Complete' : raw.status?.failed ? 'Failed' : 'Running';
+    case 'CronJob': return raw.spec?.suspend ? 'Suspended' : 'Scheduled';
+    case 'Service': return raw.spec?.type ?? 'ClusterIP';
+    case 'Ingress': return raw.status?.loadBalancer?.ingress?.length ? 'Address assigned' : 'Pending address';
+    case 'PersistentVolumeClaim': return raw.status?.phase ?? 'Pending';
+    case 'PersistentVolume': return raw.status?.phase ?? 'Available';
+    case 'StorageClass': return raw.metadata?.annotations?.['storageclass.kubernetes.io/is-default-class'] === 'true' ? 'Default' : 'Available';
+    case 'ConfigMap': return 'Available';
+    case 'Secret': return raw.type ?? 'Opaque';
+    default: return 'Unknown';
   }
-  return 'Unknown';
 }
 
-function normalizeContainers(resource: KubernetesObject): ClusterResource['containers'] {
-  const statusByName = new Map((resource.status?.containerStatuses ?? []).map((status: any) => [status.name, status]));
-  return (resource.spec?.containers ?? []).map((container: any) => {
-    const runtime = statusByName.get(container.name) as any;
-    const state = runtime?.state?.running ? 'Running' : runtime?.state?.waiting?.reason ?? runtime?.state?.terminated?.reason ?? 'Pending';
-    return { name: container.name, image: container.image, status: state, restartCount: runtime?.restartCount ?? 0 };
+function containers(raw: KubernetesObject): ClusterResource['containers'] {
+  const statuses = new Map((raw.status?.containerStatuses ?? []).map((status: any) => [status.name, status]));
+  return (raw.spec?.containers ?? []).map((container: any) => {
+    const runtime = statuses.get(container.name) as any;
+    const status = runtime?.state?.running ? 'Running' : runtime?.state?.waiting?.reason ?? runtime?.state?.terminated?.reason ?? 'Pending';
+    return { name: container.name, image: container.image, status, restartCount: runtime?.restartCount ?? 0 };
   });
 }
 
-export function normalizeResource(kind: ClusterKind, resource: KubernetesObject): ClusterResource {
-  const metadata = resource.metadata ?? {};
+function podReferences(raw: KubernetesObject): ClusterResource['references'] {
+  const namespace = raw.metadata?.namespace;
+  return (raw.spec?.volumes ?? []).flatMap((volume: any) => {
+    if (volume.configMap?.name) return [{ kind: 'ConfigMap', name: volume.configMap.name, namespace, relation: 'mounts' }];
+    if (volume.secret?.secretName) return [{ kind: 'Secret', name: volume.secret.secretName, namespace, relation: 'mounts' }];
+    if (volume.persistentVolumeClaim?.claimName) return [{ kind: 'PersistentVolumeClaim', name: volume.persistentVolumeClaim.claimName, namespace, relation: 'mounts' }];
+    return [];
+  });
+}
+
+function ingressReferences(raw: KubernetesObject): ClusterResource['references'] {
+  const namespace = raw.metadata?.namespace;
+  return (raw.spec?.rules ?? []).flatMap((rule: any) => rule.http?.paths ?? []).flatMap((path: any) => {
+    const service = path.backend?.service;
+    return service?.name ? [{ kind: 'Service', name: service.name, namespace, relation: 'routes_to' }] : [];
+  });
+}
+
+function resourceReferences(kind: ClusterKind, raw: KubernetesObject): ClusterResource['references'] {
+  if (kind === 'Pod') return podReferences(raw);
+  if (kind === 'Ingress') return ingressReferences(raw);
+  if (kind === 'PersistentVolume' && raw.spec?.claimRef?.name) return [{ kind: 'PersistentVolumeClaim', name: raw.spec.claimRef.name, namespace: raw.spec.claimRef.namespace, relation: 'bound_to' }];
+  if (kind === 'PersistentVolumeClaim' && raw.spec?.volumeName) return [{ kind: 'PersistentVolume', name: raw.spec.volumeName, relation: 'bound_to' }];
+  if (kind === 'PersistentVolumeClaim' && raw.spec?.storageClassName) return [{ kind: 'StorageClass', name: raw.spec.storageClassName, relation: 'uses' }];
+  return [];
+}
+
+export function normalizeResource(kind: ClusterKind, raw: KubernetesObject): ClusterResource {
+  const metadata = raw.metadata ?? {};
   const owner = metadata.ownerReferences?.find((reference: any) => reference.controller) ?? metadata.ownerReferences?.[0];
   return {
-    uid: resourceUid(resource),
-    kind,
-    name: metadata.name ?? 'unknown',
-    namespace: metadata.namespace,
-    status: statusFor(kind, resource),
-    labels: metadata.labels ?? {},
+    uid: uidFor(raw), kind, name: metadata.name ?? 'unknown', namespace: metadata.namespace,
+    status: resourceStatus(kind, raw), labels: metadata.labels ?? {}, annotations: metadata.annotations ?? {},
     owner: owner ? { uid: owner.uid, kind: owner.kind, name: owner.name } : undefined,
-    creationTimestamp: isoTimestamp(metadata.creationTimestamp),
-    nodeName: resource.spec?.nodeName,
-    containers: kind === 'Pod' ? normalizeContainers(resource) : undefined
+    creationTimestamp: toTimestamp(metadata.creationTimestamp), nodeName: raw.spec?.nodeName,
+    conditions: conditions(raw), containers: kind === 'Pod' ? containers(raw) : undefined,
+    selector: raw.spec?.selector?.matchLabels ?? raw.spec?.selector,
+    references: resourceReferences(kind, raw)
   };
 }
 
-function normalizeEvent(resource: KubernetesObject): TimelineEvent {
-  const metadata = resource.metadata ?? {};
-  const involved = resource.involvedObject ?? resource.regarding ?? {};
+function normalizeEvent(raw: KubernetesObject): TimelineEvent {
+  const metadata = raw.metadata ?? {};
+  const involved = raw.involvedObject ?? raw.regarding ?? {};
   return {
-    uid: resourceUid(resource),
-    timestamp: isoTimestamp(resource.eventTime ?? resource.lastTimestamp ?? metadata.creationTimestamp),
-    type: resource.type,
-    reason: resource.reason,
-    message: resource.message ?? resource.note,
-    involvedUid: involved.uid,
-    involvedKind: involved.kind,
-    involvedName: involved.name,
-    namespace: metadata.namespace
+    uid: uidFor(raw), timestamp: toTimestamp(raw.eventTime ?? raw.lastTimestamp ?? metadata.creationTimestamp), type: raw.type,
+    reason: raw.reason, message: raw.message ?? raw.note, involvedUid: involved.uid, involvedKind: involved.kind,
+    involvedName: involved.name, namespace: metadata.namespace, source: 'kubernetes_event'
   };
 }
 
 export class ClusterState {
-  private readonly resources = new Map<ClusterKind, ResourceMap>(resourceKinds.map((kind) => [kind, new Map()]));
+  private readonly records = new Map<string, StoredResource>();
+  private readonly resourceKeys = new Map<string, string>();
   private readonly events = new Map<string, TimelineEvent>();
+  private readonly history = new Map<string, ResourceHistoryEntry[]>();
   private readonly errors = new Set<string>();
+  private readonly graphBuilder = new ResourceGraphBuilder();
 
-  constructor(private readonly onUpdate: (update: ClusterUpdate, snapshot: ClusterSnapshot) => void) {}
+  constructor(
+    private readonly onUpdate: (update: ClusterUpdate) => void,
+    private readonly namespaces: Set<string> = new Set()
+  ) {}
 
-  replace(kind: ClusterKind, items: KubernetesObject[]): void {
-    const map = this.resources.get(kind)!;
-    map.clear();
-    for (const item of items) map.set(resourceUid(item), normalizeResource(kind, item));
-    this.emit({ action: 'SYNC', kind, timestamp: new Date().toISOString() });
+  replace(kind: Exclude<ClusterKind, 'Container'>, objects: KubernetesObject[]): void {
+    const visible = objects.filter((object) => this.visible(kind, object));
+    for (const [uid, record] of this.records) if (record.resource.kind === kind) this.delete(uid, false);
+    for (const object of visible) this.upsert(kind, 'SYNC', object, false);
+    this.onUpdate({ action: 'SYNC', kind, timestamp: new Date().toISOString() });
   }
 
-  apply(kind: ClusterKind, action: ClusterUpdate['action'], resource: KubernetesObject): void {
-    const map = this.resources.get(kind)!;
-    const uid = resourceUid(resource);
-    if (action === 'DELETED') map.delete(uid);
-    else map.set(uid, normalizeResource(kind, resource));
-    this.emit({ action, kind, timestamp: new Date().toISOString() });
+  apply(kind: Exclude<ClusterKind, 'Container'>, action: ResourceAction, raw: KubernetesObject): void {
+    if (!this.visible(kind, raw)) return;
+    if (action === 'DELETED') {
+      const uid = uidFor(raw);
+      this.delete(uid, true, kind);
+      return;
+    }
+    this.upsert(kind, action, raw, true);
   }
 
-  applyEvent(action: ClusterUpdate['action'], resource: KubernetesObject): void {
-    const uid = resourceUid(resource);
-    if (action === 'DELETED') this.events.delete(uid);
-    else this.events.set(uid, normalizeEvent(resource));
-    this.emit({ action, kind: 'Event', timestamp: new Date().toISOString() });
-  }
-
-  replaceEvents(items: KubernetesObject[]): void {
+  replaceEvents(objects: KubernetesObject[]): void {
     this.events.clear();
-    for (const item of items) this.events.set(resourceUid(item), normalizeEvent(item));
-    this.emit({ action: 'SYNC', kind: 'Event', timestamp: new Date().toISOString() });
+    for (const object of objects.filter((item) => this.visible('Event', item))) this.events.set(uidFor(object), normalizeEvent(object));
+    this.onUpdate({ action: 'SYNC', kind: 'Event', timestamp: new Date().toISOString() });
   }
 
-  recordError(message: string): void {
-    this.errors.add(message);
-    this.emit({ action: 'SYNC', kind: 'Event', timestamp: new Date().toISOString() });
+  applyEvent(action: ResourceAction, raw: KubernetesObject): void {
+    if (!this.visible('Event', raw)) return;
+    const uid = uidFor(raw);
+    if (action === 'DELETED') this.events.delete(uid);
+    else this.events.set(uid, normalizeEvent(raw));
+    this.onUpdate({ action, kind: 'Event', timestamp: new Date().toISOString(), event: this.events.get(uid) });
   }
+
+  recordError(message: string): void { this.errors.add(message); }
+  clearError(message: string): void { this.errors.delete(message); }
 
   snapshot(): ClusterSnapshot {
-    const resources = resourceKinds.flatMap((kind) => [...this.resources.get(kind)!.values()]);
-    const events = [...this.events.values()]
-      .sort((left, right) => (right.timestamp ?? '').localeCompare(left.timestamp ?? ''))
-      .slice(0, 200);
-    return { generatedAt: new Date().toISOString(), resources, events, observerErrors: [...this.errors] };
+    const resources = [...this.records.values()].map((record) => record.resource);
+    return {
+      generatedAt: new Date().toISOString(), resources,
+      events: [...this.events.values()].sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? '')).slice(0, 500),
+      statistics: this.statistics(resources), observerErrors: [...this.errors]
+    };
   }
 
-  private emit(update: ClusterUpdate): void {
-    this.onUpdate(update, this.snapshot());
+  resources(filters: { kind?: string; namespace?: string; search?: string }): ClusterResource[] {
+    const needle = filters.search?.toLowerCase();
+    return [...this.records.values()].map((record) => record.resource).filter((resource) =>
+      (!filters.kind || resource.kind === filters.kind) && (!filters.namespace || resource.namespace === filters.namespace) &&
+      (!needle || `${resource.name} ${resource.kind} ${resource.namespace ?? ''}`.toLowerCase().includes(needle))
+    );
   }
+
+  detail(kind: string, namespace: string | undefined, name: string): ResourceDetail | undefined {
+    const uid = this.resourceKeys.get(this.key(kind, namespace, name));
+    const record = uid ? this.records.get(uid) : undefined;
+    if (!record) return undefined;
+    return { resource: record.resource, rawYaml: stringify(record.raw), history: this.history.get(record.resource.uid) ?? [], events: this.relatedEvents(record.resource) };
+  }
+
+  graph(namespace?: string) { return this.graphBuilder.build(this.resources({ namespace })); }
+  timeline(limit = 200, namespace?: string): TimelineEvent[] {
+    const eventItems = [...this.events.values()].filter((event) => !namespace || event.namespace === namespace);
+    const historyItems: TimelineEvent[] = [...this.history.values()].flat().map((item) => ({ uid: `${item.uid}:${item.timestamp}`, timestamp: item.timestamp, source: 'resource_change', action: item.action, involvedUid: item.uid, involvedKind: item.kind, message: `${item.action} ${item.kind}`, namespace: this.records.get(item.uid)?.resource.namespace }));
+    return [...eventItems, ...historyItems].sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? '')).slice(0, limit);
+  }
+
+  private upsert(kind: Exclude<ClusterKind, 'Container'>, action: ResourceAction, raw: KubernetesObject, emit: boolean): void {
+    const resource = normalizeResource(kind, raw);
+    this.records.set(resource.uid, { resource, raw });
+    this.resourceKeys.set(this.key(resource.kind, resource.namespace, resource.name), resource.uid);
+    this.addHistory(resource, action);
+    if (emit) this.onUpdate({ action, kind, timestamp: new Date().toISOString(), resource });
+  }
+
+  private delete(uid: string, emit: boolean, kind?: Exclude<ClusterKind, 'Container'>): void {
+    const record = this.records.get(uid);
+    if (!record) return;
+    this.records.delete(uid);
+    this.resourceKeys.delete(this.key(record.resource.kind, record.resource.namespace, record.resource.name));
+    this.addHistory(record.resource, 'DELETED');
+    if (emit) this.onUpdate({ action: 'DELETED', kind: kind ?? record.resource.kind, timestamp: new Date().toISOString(), removedUid: uid });
+  }
+
+  private addHistory(resource: ClusterResource, action: ResourceAction): void {
+    const entries = this.history.get(resource.uid) ?? [];
+    entries.unshift({ uid: resource.uid, kind: resource.kind, action, timestamp: new Date().toISOString(), status: resource.status });
+    this.history.set(resource.uid, entries.slice(0, 100));
+  }
+
+  private relatedEvents(resource: ClusterResource): TimelineEvent[] {
+    return [...this.events.values()].filter((event) => event.involvedUid === resource.uid || (event.involvedKind === resource.kind && event.involvedName === resource.name && event.namespace === resource.namespace));
+  }
+
+  private statistics(resources: ClusterResource[]): ClusterStatistics {
+    const resourceCounts = Object.fromEntries(clusterKinds.map((kind) => [kind, resources.filter((resource) => resource.kind === kind).length]));
+    const pods = resources.filter((resource) => resource.kind === 'Pod');
+    const nodes = resources.filter((resource) => resource.kind === 'Node');
+    return { generatedAt: new Date().toISOString(), resourceCounts, totalPods: pods.length, readyPods: pods.filter((pod) => pod.status.includes('(Ready)')).length, totalNodes: nodes.length, readyNodes: nodes.filter((node) => node.status === 'Ready').length };
+  }
+
+  private visible(kind: ObservedKind, raw: KubernetesObject): boolean {
+    if (this.namespaces.size === 0) return true;
+    if (kind === 'Namespace') return this.namespaces.has(raw.metadata?.name);
+    if (['Node', 'PersistentVolume', 'StorageClass'].includes(kind)) return true;
+    return this.namespaces.has(raw.metadata?.namespace);
+  }
+  private key(kind: string, namespace: string | undefined, name: string): string { return `${kind}:${namespace ?? '_cluster'}:${name}`; }
 }

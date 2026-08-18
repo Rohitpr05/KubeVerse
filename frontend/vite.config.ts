@@ -8,7 +8,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/snapshot': 'http://localhost:4000',
-      '/events': 'http://localhost:4000'
+      '/events': 'http://localhost:4000',
+      '/graph': 'http://localhost:4000',
+      '/resources': 'http://localhost:4000',
+      '/resource': 'http://localhost:4000',
+      '/timeline': 'http://localhost:4000',
+      '/logs': 'http://localhost:4000',
+      '/metrics': 'http://localhost:4000',
+      '/simulator': 'http://localhost:4000',
+      '/diagnostics': 'http://localhost:4000'
     }
   }
 });

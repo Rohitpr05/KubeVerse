@@ -1,91 +1,43 @@
-// This file maps normalized, real cluster state to a visual layout. It never creates Kubernetes objects.
+// The frontend only lays out graph data projected by the backend; it never resolves Kubernetes relationships itself.
 import type { CSSProperties } from 'react';
-import type { ClusterResource, ClusterSnapshot } from '@simulator/shared/platform-contract';
+import type { ClusterKind, ClusterResource, ResourceGraph } from '@simulator/shared/platform-contract';
 import type { Edge, Node } from '@xyflow/react';
 
-export type ExplorerNodeData = { resource: ClusterResource; containerName?: string };
+export type ExplorerNodeData = { resource: ClusterResource };
 export type ExplorerNode = Node<ExplorerNodeData, 'resource'>;
 
-const palette: Record<ClusterResource['kind'], string> = {
-  Namespace: '#1d4ed8',
-  Deployment: '#7c3aed',
-  ReplicaSet: '#a21caf',
-  Pod: '#0f766e',
-  Container: '#b45309',
-  Service: '#0369a1',
-  Node: '#475569'
+const palette: Record<ClusterKind, string> = {
+  Namespace: '#1d4ed8', Node: '#475569', Deployment: '#7c3aed', ReplicaSet: '#a21caf', Pod: '#0f766e', Container: '#b45309',
+  Service: '#0369a1', Ingress: '#0e7490', DaemonSet: '#6d28d9', StatefulSet: '#9333ea', Job: '#be123c', CronJob: '#c2410c',
+  ConfigMap: '#047857', Secret: '#b91c1c', PersistentVolume: '#4f46e5', PersistentVolumeClaim: '#6366f1', StorageClass: '#4338ca'
 };
+const columns: Partial<Record<ClusterKind, number>> = { Node: 0, Namespace: 220, Ingress: 470, Service: 470, Deployment: 470, DaemonSet: 470, StatefulSet: 470, Job: 470, CronJob: 470, ReplicaSet: 735, Pod: 1000, Container: 1265, ConfigMap: 470, Secret: 470, PersistentVolumeClaim: 735, PersistentVolume: 1000, StorageClass: 470 };
+const laneOffsets: Partial<Record<ClusterKind, number>> = { Node: 0, Namespace: 0, Ingress: 0, Deployment: 105, DaemonSet: 260, StatefulSet: 415, Job: 570, CronJob: 725, Service: 880, ReplicaSet: 105, Pod: 105, Container: 105, ConfigMap: 1040, Secret: 1195, PersistentVolumeClaim: 1040, PersistentVolume: 1040, StorageClass: 1350 };
 
-function nodeId(resource: ClusterResource): string {
-  return `${resource.kind}:${resource.uid}`;
+function synthesized(node: ResourceGraph['nodes'][number]): ClusterResource {
+  return { uid: node.resourceUid, kind: node.kind, name: node.label, namespace: node.namespace, status: node.status, labels: {}, annotations: {}, conditions: [], references: [] };
 }
 
-function addEdge(edges: Edge[], source: string, target: string, label?: string): void {
-  edges.push({ id: `${source}->${target}`, source, target, label, animated: false, style: { stroke: '#64748b' } });
-}
-
-export function buildGraph(snapshot: ClusterSnapshot): { nodes: ExplorerNode[]; edges: Edge[] } {
-  const nodes: ExplorerNode[] = [];
-  const edges: Edge[] = [];
-  const byUid = new Map(snapshot.resources.map((resource) => [resource.uid, resource]));
-  const namespaceIndex = new Map<string, number>();
-  const kindRows: Record<ClusterResource['kind'], number> = { Namespace: 0, Deployment: 0, ReplicaSet: 0, Pod: 0, Container: 0, Service: 0, Node: 0 };
-  const xByKind: Record<ClusterResource['kind'], number> = { Namespace: 0, Deployment: 250, ReplicaSet: 500, Pod: 750, Container: 1000, Service: 250, Node: 750 };
-  const yByKind: Record<ClusterResource['kind'], number> = { Namespace: 0, Deployment: 0, ReplicaSet: 0, Pod: 0, Container: 0, Service: 500, Node: 700 };
-  const visibleKinds: ClusterResource['kind'][] = ['Namespace', 'Deployment', 'ReplicaSet', 'Pod', 'Service', 'Node'];
-
-  for (const resource of snapshot.resources.filter((item) => item.kind === 'Namespace').sort((a, b) => a.name.localeCompare(b.name))) {
-    namespaceIndex.set(resource.name, namespaceIndex.size);
-    nodes.push({ id: nodeId(resource), type: 'resource', position: { x: 0, y: namespaceIndex.size * 260 }, data: { resource }, style: { '--accent': palette.Namespace } as CSSProperties });
-  }
-
-  for (const kind of visibleKinds.filter((item) => item !== 'Namespace')) {
-    for (const resource of snapshot.resources.filter((item) => item.kind === kind).sort((a, b) => a.name.localeCompare(b.name))) {
-      const namespaceOffset = resource.namespace ? (namespaceIndex.get(resource.namespace) ?? namespaceIndex.size) * 260 : 0;
-      const index = kindRows[kind]++;
-      nodes.push({
-        id: nodeId(resource),
-        type: 'resource',
-        position: { x: xByKind[kind], y: yByKind[kind] + namespaceOffset + (index % 5) * 95 },
-        data: { resource },
-        style: { '--accent': palette[kind] } as CSSProperties
-      });
-
-      if (resource.owner && byUid.has(resource.owner.uid)) addEdge(edges, nodeId(byUid.get(resource.owner.uid)!), nodeId(resource));
-      else if (resource.namespace && namespaceIndex.has(resource.namespace)) {
-        const namespace = snapshot.resources.find((item) => item.kind === 'Namespace' && item.name === resource.namespace);
-        if (namespace) addEdge(edges, nodeId(namespace), nodeId(resource));
-      }
-      if (kind === 'Pod' && resource.nodeName) {
-        const node = snapshot.resources.find((item) => item.kind === 'Node' && item.name === resource.nodeName);
-        if (node) addEdge(edges, nodeId(node), nodeId(resource), 'scheduled');
-      }
-    }
-  }
-
-  for (const pod of snapshot.resources.filter((item) => item.kind === 'Pod')) {
-    const podNode = nodeId(pod);
-    for (const [index, container] of (pod.containers ?? []).entries()) {
-      const containerResource: ClusterResource = {
-        uid: `${pod.uid}:${container.name}`,
-        kind: 'Container',
-        name: container.name,
-        namespace: pod.namespace,
-        status: `${container.status} · ${container.restartCount} restarts`,
-        labels: {},
-        owner: { uid: pod.uid, kind: 'Pod', name: pod.name },
-        creationTimestamp: pod.creationTimestamp
-      };
-      const podGraphNode = nodes.find((node) => node.id === podNode);
-      nodes.push({
-        id: nodeId(containerResource),
-        type: 'resource',
-        position: { x: (podGraphNode?.position.x ?? 750) + 260, y: (podGraphNode?.position.y ?? 0) + index * 95 },
-        data: { resource: containerResource, containerName: container.name },
-        style: { '--accent': palette.Container } as CSSProperties
-      });
-      addEdge(edges, podNode, nodeId(containerResource));
-    }
-  }
+export function buildFlowGraph(resources: ClusterResource[], graph: ResourceGraph | undefined, allowedKinds: Set<string>, search: string): { nodes: ExplorerNode[]; edges: Edge[] } {
+  if (!graph) return { nodes: [], edges: [] };
+  const resourceByUid = new Map(resources.map((resource) => [resource.uid, resource]));
+  const namespaceOrder = new Map(resources.filter((resource) => resource.kind === 'Namespace').sort((a, b) => a.name.localeCompare(b.name)).map((resource, index) => [resource.name, index]));
+  const rows = new Map<string, number>();
+  const needle = search.toLowerCase();
+  const visible = graph.nodes.filter((node) => allowedKinds.has(node.kind) && (!needle || `${node.label} ${node.kind} ${node.namespace ?? ''}`.toLowerCase().includes(needle)));
+  const visibleIds = new Set(visible.map((node) => node.id));
+  const nodes = visible.map((node) => {
+    const resource = resourceByUid.get(node.resourceUid) ?? synthesized(node);
+    const key = `${node.kind}:${node.namespace ?? 'cluster'}`;
+    const row = rows.get(key) ?? 0;
+    rows.set(key, row + 1);
+    const namespaceOffset = (namespaceOrder.get(node.namespace ?? '') ?? 0) * 1580;
+    return {
+      id: node.id, type: 'resource' as const,
+      position: { x: columns[node.kind] ?? 470, y: namespaceOffset + (laneOffsets[node.kind] ?? 0) + row * 98 + (node.kind === 'Node' ? 1500 : 0) },
+      data: { resource }, style: { '--accent': palette[node.kind] } as CSSProperties
+    };
+  });
+  const edges = graph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)).map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, label: ['selects', 'mounts', 'routes_to', 'bound_to', 'scheduled_on'].includes(edge.relation) ? edge.relation.replaceAll('_', ' ') : undefined, type: 'smoothstep', style: { stroke: edge.relation === 'selects' ? '#38bdf8' : '#64748b' } }));
   return { nodes, edges };
 }
