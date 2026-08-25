@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: kubeverse-my-application
+  labels:
+    app: backend
+    app.kubernetes.io/managed-by: kubeverse
+    kubeverse.dev/project-id: 01a037bf-5bff-7285-a0d0-0d8e79272479
+    kubeverse.dev/project-name: TEST-001
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        app.kubernetes.io/managed-by: kubeverse
+        kubeverse.dev/project-id: 01a037bf-5bff-7285-a0d0-0d8e79272479
+        kubeverse.dev/project-name: TEST-001
+    spec:
+      containers:
+        - name: backend
+          image: My Application/backend:latest
+          ports:
+            - containerPort: 4000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          readinessProbe: &a1
+            httpGet:
+              path: /health
+              port: 4000
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe: *a1

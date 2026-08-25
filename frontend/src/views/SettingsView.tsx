@@ -53,7 +53,7 @@ export function SettingsView() {
         <label>Provider<select value="openrouter" disabled><option value="openrouter">OpenRouter</option></select></label>
         <label>Model<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="openai/gpt-4o-mini" /></label>
         <label>API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={settings?.hasApiKey ? '••••••••••••••••••••' : 'sk-or-...'} /></label>
-        <p className="muted">Stored locally at <code>~/.kubeverse/settings.json</code>, never committed to this project or sent anywhere but the configured provider. A production desktop build will move this to OS keychain storage.</p>
+        <p className="muted">Your API key is stored locally on this machine, at <code>~/.kubeverse/settings.json</code>. It is never committed to a project, never sent to KubeVerse, and only ever sent to the AI provider you configure here. A production desktop build will move this to OS keychain storage.</p>
         <div className="settings-actions">
           <button onClick={() => void save()}>Save</button>
           <button onClick={() => void testConnection()} disabled={testing}>{testing ? 'Testing…' : 'Test Connection'}</button>
@@ -64,12 +64,15 @@ export function SettingsView() {
 
       <section className="settings-card">
         <h2>Local environment</h2>
-        <dl>
-          <dt>Docker</dt>
-          <dd>{environment ? (environment.docker.available ? `Available (${environment.docker.version ?? 'unknown version'})` : `Unavailable — ${environment.docker.error ?? 'not detected'}`) : 'Checking…'}</dd>
-          <dt>Kubernetes</dt>
-          <dd>{environment ? (environment.kubernetes.available ? `Available (context: ${environment.kubernetes.context ?? 'unknown'})` : `Unavailable — ${environment.kubernetes.error ?? 'not detected'}`) : 'Checking…'}</dd>
-        </dl>
+        <p className="muted">Real checks against this machine - never fabricated. If something a generated project needs isn't available, it's shown here plainly.</p>
+        <div className="environment-row">
+          <span className={environment?.docker.available ? 'status-badge ok' : 'status-badge error'}>Docker: {environment ? (environment.docker.available ? 'Available' : 'Unavailable') : 'Checking…'}</span>
+          <span className="muted">{environment && (environment.docker.available ? environment.docker.version ?? 'unknown version' : environment.docker.error ?? 'not detected — install or start Docker Desktop to build/run generated projects')}</span>
+        </div>
+        <div className="environment-row">
+          <span className={environment?.kubernetes.available ? 'status-badge ok' : 'status-badge error'}>Kubernetes: {environment ? (environment.kubernetes.available ? 'Available' : 'Unavailable') : 'Checking…'}</span>
+          <span className="muted">{environment && (environment.kubernetes.available ? `context: ${environment.kubernetes.context ?? 'unknown'}${environment.kubernetes.server ? ` · ${environment.kubernetes.server}` : ''}` : environment.kubernetes.error ?? 'no context configured')}</span>
+        </div>
       </section>
 
       <section className="settings-card">

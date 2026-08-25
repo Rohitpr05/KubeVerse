@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ClusterResource, ResourceDetail } from '@kubeverse/shared';
+import { ConceptHint } from './components/ConceptHint';
 
 function resourcePath(resource: ClusterResource): string { return `/resource/${resource.kind}/${resource.namespace ?? 'cluster'}/${encodeURIComponent(resource.name)}`; }
 function age(timestamp?: string): string { if (!timestamp) return 'unknown'; const seconds = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000)); return seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 3600)}h`; }
@@ -23,6 +24,7 @@ export function Inspector({ resource }: { resource?: ClusterResource }) {
   const annotations = Object.entries(resource.annotations);
   return <section className="inspector">
     <h2>{resource.name}</h2><p className="kind-badge">{resource.kind}</p>
+    <ConceptHint kind={resource.kind} />
     <dl><dt>Namespace</dt><dd>{resource.namespace ?? 'cluster-scoped'}</dd><dt>Status</dt><dd>{resource.status}</dd><dt>Owner</dt><dd>{resource.owner ? `${resource.owner.kind}/${resource.owner.name}` : 'none'}</dd><dt>Age</dt><dd>{age(resource.creationTimestamp)}</dd></dl>
     <h3>Labels</h3>{labels.length ? <KeyValues items={labels} /> : <p className="muted">No labels</p>}
     <h3>Annotations</h3>{annotations.length ? <KeyValues items={annotations} /> : <p className="muted">No annotations</p>}

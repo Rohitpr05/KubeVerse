@@ -5,8 +5,12 @@ body { min-width: 320px; overflow: hidden; }
 button, input, select { font: inherit; }
 .app-shell { position: relative; height: 100dvh; min-height: 0; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: #0b1120; }
 .topbar { display: flex; min-width: 0; justify-content: space-between; align-items: center; gap: 18px; padding: 0 18px; background: #0f172a; border-bottom: 1px solid #26354b; }
+.topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .topbar .brand strong { font-size: 1.05rem; letter-spacing: .01em; }
 .topbar-right { display: flex; align-items: center; gap: 14px; }
+.project-chip { border: 1px solid #26354b; border-radius: 999px; background: #142036; color: #c5d3e4; font-size: .74rem; padding: 5px 12px; cursor: pointer; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-chip:hover { background: #1a2740; }
+.project-chip strong { color: #eaf2fd; }
 .install-id { color: #8192a8; font-size: .72rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .connection { display: flex; align-items: center; gap: 7px; color: #c5d3e4; font-size: .78rem; white-space: nowrap; }.connection strong { color: #f1f5f9; font-weight: 650; }.online-dot, .offline-dot { width: 8px; height: 8px; border-radius: 50%; }.online-dot { background: #34d399; box-shadow: 0 0 0 3px #34d39922; }.offline-dot { background: #f97316; }
 .observer-warning { z-index: 30; background: #7c2d12; color: #ffedd5; padding: 6px 18px; font-size: .78rem; }
@@ -37,19 +41,104 @@ button, input, select { font: inherit; }
 .file-tree-item { width: 100%; text-align: left; background: transparent; border: none; color: #c5d3e4; font-size: .74rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 5px 8px; cursor: pointer; border-radius: 4px; }
 .file-tree-item:hover { background: #16223a; }
 .file-tree li.active .file-tree-item { background: #1e3a5f; color: #eaf2fd; }
-.generated-file-browser { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; }
+.generated-file-browser { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; margin-top: 8px; }
+.file-tree-branch { list-style: none; margin: 0; padding-left: 12px; font-size: .74rem; }
+.file-tree > .file-tree-branch { padding-left: 0; }
+.file-tree details summary { cursor: pointer; color: #9eafc3; font-size: .74rem; padding: 3px 4px; }
+.file-preview-pane { min-width: 0; }
+.file-preview-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; color: #9eafc3; margin-bottom: 6px; }
 .file-preview { max-height: 400px; }
-.controls-panel { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 7px 16px; background: #111c30; border-bottom: 1px solid #26354b; overflow-x: auto; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .74rem; word-break: break-all; }
+.link-button { background: none; border: none; padding: 0; color: #93c5fd; text-decoration: underline; cursor: pointer; font: inherit; }
+.empty-hero { margin: 24px 0; padding: 28px 22px; border: 1px dashed #33465f; border-radius: 10px; background: #0f172a; text-align: center; }
+.empty-hero h2 { margin: 0 0 8px; font-size: 1.05rem; }
+.empty-hero .settings-actions { justify-content: center; margin-top: 14px; }
+.status-badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 10px; font-size: .72rem; font-weight: 650; }
+.status-badge.ok { background: #0f3d2c; color: #6ee7b7; }
+.status-badge.error { background: #4c1d1d; color: #fca5a5; }
+.environment-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; flex-wrap: wrap; }
+.checklist { list-style: none; margin: 0 0 6px; padding: 0; font-size: .8rem; }
+.checklist-item { padding: 4px 0; color: #6c7d94; }
+.checklist-item.done { color: #93e6b8; }
+.validation-errors { margin-top: 10px; }
+.validation-errors ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.validation-errors li { padding: 3px 0; }
+.run-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 6px; }
+.run-action { min-width: 0; }
+.execution-output { margin-top: 8px; }
+.execution-output.error { border-color: #7f1d1d; color: #fca5a5; }
+.architecture-preview { margin-bottom: 4px; }
+.architecture-flow { display: flex; flex-direction: column; align-items: center; margin: 10px 0 16px; }
+.flow-step { display: flex; flex-direction: column; align-items: center; }
+.flow-box { min-width: 150px; border: 1px solid #33465f; border-radius: 7px; background: #142036; padding: 9px 14px; text-align: center; }
+.flow-box-name { display: block; font-weight: 650; color: #eaf2fd; font-size: .84rem; }
+.flow-box-meta { display: block; color: #8798ac; font-size: .68rem; margin-top: 2px; }
+.flow-arrow { color: #526279; font-size: 1rem; padding: 2px 0; }
+.flow-arrow.disconnected { opacity: .35; }
+.traffic-edges { list-style: none; margin: 0 0 16px; padding: 0; font-size: .78rem; }
+.traffic-edges li { padding: 3px 0; }
+.service-table { width: 100%; border-collapse: collapse; font-size: .74rem; }
+.service-table th, .service-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #1d2b3e; }
+.service-table th { color: #8495aa; font-weight: 650; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; }
+.concept-hint { margin: 6px 0 14px; font-size: .74rem; }
+.concept-hint summary { cursor: pointer; color: #93c5fd; }
+.concept-hint p { margin: 6px 0 0; color: #b8c7d9; line-height: 1.5; }
+.cluster-unavailable { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 4px; padding: 32px; background: #0c1525; }
+.cluster-unavailable h2 { margin: 0; font-size: 1.15rem; }
+.cluster-unavailable p { max-width: 480px; color: #9eafc3; margin: 4px 0; }
+.cluster-unavailable dl { margin-top: 10px; text-align: left; }
+.toolbar-buttons { display: flex; gap: 6px; }
+.toolbar-buttons button { border: 1px solid #33465f; border-radius: 5px; background: #142036; color: #c5d3e4; padding: 5px 10px; font-size: .72rem; cursor: pointer; }
+.toolbar-buttons button:hover { background: #1a2740; }
+/* Stacking context notes (Part 2 layering fix):
+   Neither .playground-view nor .explorer-layout nor .canvas previously set
+   `position`, so React Flow's internal absolutely-positioned layers
+   (.react-flow__renderer z-index:4, .react-flow__connectionline z-index:1001,
+   etc. - see node_modules/@xyflow/react/dist/base.css) ended up positioned
+   against the nearest ancestor that DOES set `position` - .app-shell,
+   `position: relative` with no z-index - which does not itself establish a
+   stacking context. That put React Flow's internal z-index values and this
+   toolbar's dropdown in the *same* effective stacking context, where a
+   connection-line z-index of 1001 could beat a toolbar z-index that hadn't
+   been raised to compete with it - "solving" it by picking an even bigger
+   toolbar z-index would only have started the same fight one level up.
+   The correct fix is containment, not escalation:
+     - .canvas gets `isolation: isolate`, a stacking context on its own right
+       (no `position`/z-index hack required) that *contains* every one of
+       React Flow's internal z-index values, however high, so none of them
+       can ever paint above anything outside .canvas.
+     - .controls-panel gets its own small, explicit stacking context
+       (`position: relative; z-index: 1`) so it reliably paints above the
+       now-contained canvas.
+     - The Filters dropdown's popover content is portaled to document.body
+       (components/PopoverDropdown.tsx) rather than living inside
+       .controls-panel at all, both so it can never be clipped by
+       .controls-panel's `overflow-x: auto` (setting only overflow-x forces
+       the *used* value of overflow-y to auto too - an obscure but real CSS
+       Overflow spec rule, which was clipping the dropdown vertically) and so
+       its own z-index only has to beat "everything else on the page", which
+       a small explicit value can do honestly once it's outside every
+       contained stacking context. */
+.controls-panel { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 7px 16px; background: #111c30; border-bottom: 1px solid #26354b; overflow-x: auto; }
 .controls-panel label { display: flex; align-items: center; gap: 6px; color: #9eafc3; font-size: .74rem; white-space: nowrap; }.controls-panel input, .controls-panel select { max-width: 205px; min-height: 29px; border: 1px solid #33465f; border-radius: 5px; background: #0b1322; color: #e2e8f0; padding: 4px 8px; }.controls-panel input { width: 180px; }
 .counters { display: flex; gap: 7px; margin-left: auto; color: #b8c7d9; font-size: .74rem; white-space: nowrap; }.counters span { border: 1px solid #33465f; border-radius: 999px; padding: 4px 8px; background: #142036; }
-.controls-panel details { position: relative; font-size: .74rem; color: #c5d3e4; }.controls-panel summary { cursor: pointer; border: 1px solid #33465f; border-radius: 5px; padding: 5px 8px; background: #142036; white-space: nowrap; }.kind-filters { position: absolute; z-index: 20; right: 0; top: 32px; display: grid; grid-template-columns: repeat(2, max-content); gap: 5px 10px; width: max-content; padding: 10px; border: 1px solid #3a4a61; border-radius: 6px; background: #101a2c; box-shadow: 0 10px 25px #020617aa; }.kind-filters label { font-size: .7rem; }
+.popover-anchor { position: relative; }
+.popover-trigger { cursor: pointer; border: 1px solid #33465f; border-radius: 5px; padding: 5px 8px; background: #142036; color: #c5d3e4; font-size: .74rem; white-space: nowrap; }
+.popover-trigger[aria-expanded="true"] { border-color: #4c7bd1; }
+/* Portaled into document.body - see the stacking-context note above. 1000
+   is an explicit, documented choice, not a guess: it only has to beat
+   ordinary page content once it's outside every contained stacking context
+   (.canvas's isolated one included), with headroom below native browser UI. */
+.popover-panel { position: fixed; z-index: 1000; display: grid; grid-template-columns: repeat(2, max-content); gap: 5px 10px; width: max-content; max-width: calc(100vw - 16px); padding: 10px; border: 1px solid #3a4a61; border-radius: 6px; background: #101a2c; box-shadow: 0 10px 25px #020617aa; }
+.popover-panel label { font-size: .7rem; color: #c5d3e4; display: flex; align-items: center; gap: 5px; }
+.kind-filters { display: contents; }
 .explorer-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; }
-.canvas { min-width: 0; min-height: 0; height: 100%; background: #0c1525; }.react-flow { height: 100%; width: 100%; }.react-flow__controls { box-shadow: 0 2px 8px #02061799; }.react-flow__controls button { background: #162238; border-color: #33465f; color: #cbd5e1; }.react-flow__minimap { background: #111c30; border: 1px solid #33465f; }.react-flow__edge-text { fill: #cbd5e1; font-size: 10px; }
+.canvas { isolation: isolate; min-width: 0; min-height: 0; height: 100%; background: #0c1525; }.react-flow { height: 100%; width: 100%; }.react-flow__controls { box-shadow: 0 2px 8px #02061799; }.react-flow__controls button { background: #162238; border-color: #33465f; color: #cbd5e1; }.react-flow__minimap { background: #111c30; border: 1px solid #33465f; }.react-flow__edge-text { fill: #cbd5e1; font-size: 10px; }
 .canvas-actions { display: flex; gap: 6px; }.canvas-actions button { border: 1px solid #3b4c63; border-radius: 5px; background: #162238; color: #dbe7f5; cursor: pointer; padding: 5px 8px; font-size: .72rem; }.canvas-actions button:hover { background: #22334d; }
 .side-panel { min-width: 0; min-height: 0; overflow-y: auto; border-left: 1px solid #26354b; background: #0f172a; }.inspector { padding: 17px; border-bottom: 1px solid #26354b; }.inspector.empty { color: #9eafc3; line-height: 1.45; min-height: 180px; }.inspector.empty h2 { color: #e2e8f0; }.inspector h2 { overflow-wrap: anywhere; margin: 0 0 6px; font-size: 1rem; }.kind-badge { display: inline-block; margin: 0 0 15px; padding: 3px 7px; border-radius: 999px; color: #bcd4f6; background: #1e3a5f; font-size: .67rem; font-weight: 700; }
 .inspector h3, .yaml-details summary { margin: 19px 0 7px; color: #b9c7d8; font-size: .76rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }.yaml-details summary { cursor: pointer; }.yaml-details[open] summary { margin-bottom: 8px; }
 dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-size: .78rem; margin: 0; } dt { color: #8495aa; } dd { margin: 0; overflow-wrap: anywhere; color: #e0eaf6; }.inspector ul { list-style: none; padding: 0; margin: 0; font-size: .72rem; }.inspector li { padding: 5px 0; border-bottom: 1px solid #1d2b3e; overflow-wrap: anywhere; }.inspector code { color: #93c5fd; }.muted { color: #8798ac; font-size: .78rem; }.yaml, .logs { max-height: 300px; margin: 0; overflow: auto; border: 1px solid #283950; border-radius: 5px; padding: 9px; background: #09111e; color: #bfdbfe; font: .68rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }.logs { color: #c7d2fe; }.error { color: #fca5a5; font-size: .75rem; }
 .timeline { padding: 16px; }.timeline h2 { margin: 0 0 10px; color: #dce8f6; font-size: .86rem; }.timeline ol { list-style: none; padding: 0; margin: 0; }.timeline li { display: grid; grid-template-columns: 62px 80px minmax(0, 1fr); gap: 6px; padding: 7px 0; border-bottom: 1px solid #1d2b3e; color: #bfccdc; font-size: .69rem; overflow-wrap: anywhere; }.timeline time { color: #7f91a7; }.event-source { border-radius: 3px; padding: 1px 4px; width: max-content; height: max-content; font-size: .61rem; font-weight: 700; }.event-source.kubernetes_event { color: #bae6fd; background: #0c4a6e; }.event-source.resource_change { color: #ddd6fe; background: #4c1d95; }
 .resource-node { width: 190px; min-height: 70px; border: 1px solid #314258; border-left: 4px solid var(--accent); border-radius: 7px; background: #162238; padding: 8px 10px; box-shadow: 0 3px 10px #02061788; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }.resource-node:hover { border-color: var(--accent); transform: translateY(-1px); }.resource-node.selected { box-shadow: 0 0 0 2px #e2e8f0, 0 4px 12px #02061788; }.resource-topline { display: flex; justify-content: space-between; align-items: center; }.resource-kind { color: #b8c7d9; font-weight: 750; font-size: .62rem; letter-spacing: .08em; text-transform: uppercase; }.resource-name { padding: 5px 0 3px; color: #f1f5f9; font-weight: 650; font-size: .81rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.resource-status { color: #aab9ca; font-size: .69rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.status-dot { width: 7px; height: 7px; border-radius: 50%; }.status-dot.healthy { background: #34d399; }.status-dot.unhealthy { background: #fb7185; }.status-dot.pending { background: #fbbf24; }.react-flow__attribution { display: none; }
-@media (max-width: 1050px) { .explorer-layout { grid-template-columns: minmax(0, 1fr) 310px; }.side-panel { font-size: .95em; }.counters { display: none; }.shell-body { grid-template-columns: 160px minmax(0, 1fr); } }
-@media (max-width: 760px) { body { overflow: auto; }.shell-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }.sidebar { flex-direction: row; flex-wrap: wrap; }.sidebar-footer { margin-left: auto; }.explorer-layout { display: flex; flex-direction: column; }.canvas { height: 65dvh; min-height: 480px; }.side-panel { max-height: none; border-left: 0; border-top: 1px solid #26354b; }.controls-panel { flex-wrap: wrap; }.controls-panel input { width: 155px; }.install-id { display: none; }.connection strong { display: none; } }
+@media (max-width: 1050px) { .explorer-layout { grid-template-columns: minmax(0, 1fr) 310px; }.side-panel { font-size: .95em; }.counters { display: none; }.shell-body { grid-template-columns: 160px minmax(0, 1fr); }.run-actions { grid-template-columns: 1fr; }.generated-file-browser { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { body { overflow: auto; }.shell-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }.sidebar { flex-direction: row; flex-wrap: wrap; }.sidebar-footer { margin-left: auto; }.explorer-layout { display: flex; flex-direction: column; }.canvas { height: 65dvh; min-height: 480px; }.side-panel { max-height: none; border-left: 0; border-top: 1px solid #26354b; }.controls-panel { flex-wrap: wrap; }.controls-panel input { width: 155px; }.install-id { display: none; }.connection strong { display: none; }.project-chip { max-width: 160px; } }

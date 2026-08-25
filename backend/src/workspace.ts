@@ -124,6 +124,39 @@ export function getProjectById(id: string): ProjectSummary | undefined {
   return listProjectSummaries().find((project) => project.id === id);
 }
 
+export interface ArchitectureStatus {
+  compiled: boolean;
+  name?: string;
+  serviceCount?: number;
+  lastCompiledAt?: string;
+  lastGeneratedAt?: string;
+  generatedFileCount?: number;
+}
+
+export interface ProjectListEntry extends ProjectSummary {
+  architecture: ArchitectureStatus;
+}
+
+function summarizeArchitecture(state: GeneratedState): ArchitectureStatus {
+  return {
+    compiled: Boolean(state.spec),
+    name: state.spec?.name,
+    serviceCount: state.spec?.services.length,
+    lastCompiledAt: state.lastCompiledAt,
+    lastGeneratedAt: state.lastGeneratedAt,
+    generatedFileCount: state.files?.length,
+  };
+}
+
+// Used by the Projects/Architectures list views so they can show real compile
+// and generation status without an N+1 fetch per project from the frontend.
+export function listProjectsWithArchitecture(): ProjectListEntry[] {
+  return listProjectSummaries().map((project) => ({
+    ...project,
+    architecture: summarizeArchitecture(readGeneratedState(project.path)),
+  }));
+}
+
 export function readArchitectureSource(projectPath: string): string {
   const path = join(projectPath, 'architecture.md');
   return existsSync(path) ? readFileSync(path, 'utf8') : '';

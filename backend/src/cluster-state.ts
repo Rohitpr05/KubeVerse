@@ -5,6 +5,7 @@ import type {
 } from '@kubeverse/shared';
 import { clusterKinds } from '@kubeverse/shared';
 import { stringify } from 'yaml';
+import { isOwnedByProject } from './ownership.js';
 import { ResourceGraphBuilder } from './resource-graph.js';
 
 export type KubernetesObject = Record<string, any>;
@@ -127,7 +128,15 @@ export class ClusterState {
   private readonly graphBuilder = new ResourceGraphBuilder();
 
   constructor(
-    private readonly onUpdate: (update: ClusterUpdate) => void,
+    // `resource`/`event` (when present) is the object the update is *about* -
+    // for a DELETED update it's the resource/event as it was immediately
+    // before removal, captured here because by the time a caller could look
+    // it up from current state it would already be gone. This lets a
+    // project-scoped broadcast layer (server.ts) decide per-update whether a
+    // given change is relevant to a given connected client's project,
+    // without ClusterState itself needing to know what a "KubeVerse project"
+    // is - it stays a generic Kubernetes read model either way.
+    private readonly onUpdate: (update: ClusterUpdate, resource?: ClusterResource, event?: TimelineEvent) => void,
     private readonly namespaces: Set<string> = new Set()
   ) {}
 
@@ -157,9 +166,11 @@ export class ClusterState {
   applyEvent(action: ResourceAction, raw: KubernetesObject): void {
     if (!this.visible('Event', raw)) return;
     const uid = uidFor(raw);
+    const previous = this.events.get(uid);
     if (action === 'DELETED') this.events.delete(uid);
     else this.events.set(uid, normalizeEvent(raw));
-    this.onUpdate({ action, kind: 'Event', timestamp: new Date().toISOString(), event: this.events.get(uid) });
+    const event = action === 'DELETED' ? previous : this.events.get(uid);
+    this.onUpdate({ action, kind: 'Event', timestamp: new Date().toISOString(), event }, undefined, event);
   }
 
   recordError(message: string): void { this.errors.add(message); }
@@ -196,12 +207,75 @@ export class ClusterState {
     return [...eventItems, ...historyItems].sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? '')).slice(0, limit);
   }
 
+  // --- Project-scoped view (KUBEVERSE_MASTER_SPEC.md, "Component
+  // responsibilities" - the Playground answers "how is MY architecture
+  // running", never "what is running on this cluster"). Ownership is decided
+  // exclusively by the kubeverse.dev/project-id label (backend/src/ownership.ts)
+  // that KubeVerse's generators stamp onto every resource they produce - a
+  // resource with no such label, or a different project's id, is simply not
+  // included; nothing here infers ownership from names, namespaces, or images.
+
+  // A resource belongs to a project if it carries that project's ownership
+  // label directly, *or* - the one deliberate exception - it's a cluster-scoped
+  // Node that is currently hosting at least one of that project's Pods. Nodes
+  // can't be labelled per-project (they're shared cluster infrastructure), so
+  // "relevant to this project" is the closest honest equivalent to ownership.
+  isResourceOwnedByProject(resource: ClusterResource | undefined, projectId: string): boolean {
+    if (!resource) return false;
+    if (isOwnedByProject(resource.labels, projectId)) return true;
+    if (resource.kind === 'Node') {
+      for (const record of this.records.values()) {
+        if (record.resource.kind === 'Pod' && record.resource.nodeName === resource.name && isOwnedByProject(record.resource.labels, projectId)) return true;
+      }
+    }
+    return false;
+  }
+
+  // Events are never labelled themselves - relevance is decided by resolving
+  // the event's involved object (by uid, falling back to kind/namespace/name)
+  // against current state and checking *that* object's ownership.
+  isEventRelevantToProject(event: TimelineEvent | undefined, projectId: string): boolean {
+    if (!event) return false;
+    const byUid = event.involvedUid ? this.records.get(event.involvedUid) : undefined;
+    if (byUid) return this.isResourceOwnedByProject(byUid.resource, projectId);
+    if (event.involvedKind && event.involvedName) {
+      const uid = this.resourceKeys.get(this.key(event.involvedKind, event.namespace, event.involvedName));
+      const record = uid ? this.records.get(uid) : undefined;
+      if (record) return this.isResourceOwnedByProject(record.resource, projectId);
+    }
+    return false;
+  }
+
+  projectResources(projectId: string): ClusterResource[] {
+    return [...this.records.values()].map((record) => record.resource).filter((resource) => this.isResourceOwnedByProject(resource, projectId));
+  }
+
+  projectSnapshot(projectId: string): ClusterSnapshot {
+    const resources = this.projectResources(projectId);
+    const events = [...this.events.values()]
+      .filter((event) => this.isEventRelevantToProject(event, projectId))
+      .sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''))
+      .slice(0, 500);
+    return { generatedAt: new Date().toISOString(), resources, events, statistics: this.statistics(resources), observerErrors: [...this.errors] };
+  }
+
+  projectGraph(projectId: string) { return this.graphBuilder.build(this.projectResources(projectId)); }
+
+  projectTimeline(limit = 200, projectId: string): TimelineEvent[] {
+    const eventItems = [...this.events.values()].filter((event) => this.isEventRelevantToProject(event, projectId));
+    const historyItems: TimelineEvent[] = [...this.history.values()]
+      .flat()
+      .filter((item) => this.isResourceOwnedByProject(this.records.get(item.uid)?.resource, projectId))
+      .map((item) => ({ uid: `${item.uid}:${item.timestamp}`, timestamp: item.timestamp, source: 'resource_change', action: item.action, involvedUid: item.uid, involvedKind: item.kind, message: `${item.action} ${item.kind}`, namespace: this.records.get(item.uid)?.resource.namespace }));
+    return [...eventItems, ...historyItems].sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? '')).slice(0, limit);
+  }
+
   private upsert(kind: Exclude<ClusterKind, 'Container'>, action: ResourceAction, raw: KubernetesObject, emit: boolean): void {
     const resource = normalizeResource(kind, raw);
     this.records.set(resource.uid, { resource, raw });
     this.resourceKeys.set(this.key(resource.kind, resource.namespace, resource.name), resource.uid);
     this.addHistory(resource, action);
-    if (emit) this.onUpdate({ action, kind, timestamp: new Date().toISOString(), resource });
+    if (emit) this.onUpdate({ action, kind, timestamp: new Date().toISOString(), resource }, resource);
   }
 
   private delete(uid: string, emit: boolean, kind?: Exclude<ClusterKind, 'Container'>): void {
@@ -210,7 +284,7 @@ export class ClusterState {
     this.records.delete(uid);
     this.resourceKeys.delete(this.key(record.resource.kind, record.resource.namespace, record.resource.name));
     this.addHistory(record.resource, 'DELETED');
-    if (emit) this.onUpdate({ action: 'DELETED', kind: kind ?? record.resource.kind, timestamp: new Date().toISOString(), removedUid: uid });
+    if (emit) this.onUpdate({ action: 'DELETED', kind: kind ?? record.resource.kind, timestamp: new Date().toISOString(), removedUid: uid }, record.resource);
   }
 
   private addHistory(resource: ClusterResource, action: ResourceAction): void {

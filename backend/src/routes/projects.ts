@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { getProjectById, listProjectSummaries, openOrCreateProject, readArchitectureSource, readGeneratedState } from '../workspace.js';
+import { getProjectById, listProjectsWithArchitecture, openOrCreateProject, readArchitectureSource, readGeneratedState } from '../workspace.js';
 
 interface OpenProjectBody {
   path?: string;
@@ -18,7 +18,7 @@ function resolveProjectOr404(id: string, reply: { code: (status: number) => { se
 }
 
 export function registerProjectRoutes(app: FastifyInstance): void {
-  app.get('/api/projects', async () => ({ projects: listProjectSummaries() }));
+  app.get('/api/projects', async () => ({ projects: listProjectsWithArchitecture() }));
 
   app.post('/api/projects', async (request, reply) => {
     const body = request.body as OpenProjectBody;

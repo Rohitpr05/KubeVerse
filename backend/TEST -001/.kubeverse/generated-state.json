@@ -1,0 +1,130 @@
+{
+  "lastCompiledAt": "2026-08-25T09:08:13.034Z",
+  "spec": {
+    "name": "My Application",
+    "version": 1,
+    "services": [
+      {
+        "name": "frontend",
+        "type": "frontend",
+        "runtime": "node",
+        "port": 3000,
+        "protocol": "http",
+        "env": {},
+        "dependsOn": [],
+        "replicas": 1,
+        "resources": {
+          "requests": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          },
+          "limits": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          }
+        },
+        "healthCheck": {
+          "path": "/health",
+          "intervalSeconds": 10,
+          "timeoutSeconds": 3
+        },
+        "expose": false
+      },
+      {
+        "name": "backend",
+        "type": "backend",
+        "runtime": "node",
+        "port": 4000,
+        "protocol": "http",
+        "env": {},
+        "dependsOn": [],
+        "replicas": 1,
+        "resources": {
+          "requests": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          },
+          "limits": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          }
+        },
+        "healthCheck": {
+          "path": "/health",
+          "intervalSeconds": 10,
+          "timeoutSeconds": 3
+        },
+        "expose": false
+      }
+    ],
+    "traffic": [
+      {
+        "from": "frontend",
+        "to": "backend"
+      }
+    ]
+  },
+  "lastGeneratedAt": "2026-08-25T13:44:55.644Z",
+  "files": [
+    {
+      "path": "generated/frontend/package.json",
+      "bytes": 190,
+      "sha256": "c7df944c5cde11500e3582e09f63e63fd31cd4538775704bfca1e4b074db61ed"
+    },
+    {
+      "path": "generated/frontend/src/server.js",
+      "bytes": 647,
+      "sha256": "edf4029ffd7ae714985e97cbdb87589d96b11af77b716af7087c47f5026c3618"
+    },
+    {
+      "path": "generated/frontend/Dockerfile",
+      "bytes": 152,
+      "sha256": "8a79e4c7a57d3b1681ba0be7d7b3a2ba2543fdbd07efe19644d4ff466564371c"
+    },
+    {
+      "path": "generated/backend/package.json",
+      "bytes": 189,
+      "sha256": "d7541a8da3c6224814e5d13586be7326ce19ddbd28208d6c4c665bd0af6a45af"
+    },
+    {
+      "path": "generated/backend/src/server.js",
+      "bytes": 645,
+      "sha256": "b9892b3d1f646c064cc751407b501bdcb2f0d11ccb16764d18cf6e8d54f7d37e"
+    },
+    {
+      "path": "generated/backend/Dockerfile",
+      "bytes": 152,
+      "sha256": "5ffcb7a7afc64af8830ca69ad514c3eb606f99edda2b294f1ed85e5387cba270"
+    },
+    {
+      "path": "docker/docker-compose.yml",
+      "bytes": 297,
+      "sha256": "3c057f973a9b41664ae20908bdc65bb4f4a09f97c4bf33480e70553be4439127"
+    },
+    {
+      "path": "kubernetes/namespace.yaml",
+      "bytes": 236,
+      "sha256": "d5238e88829327ba452851a72a22595e9b74151afce9a6735054fdf1cc24e4c7"
+    },
+    {
+      "path": "kubernetes/frontend/deployment.yaml",
+      "bytes": 1089,
+      "sha256": "00280ced7bf7cb1f42dcffc6ec379cb5cd14e0d98a02f93ae4a37217c445e747"
+    },
+    {
+      "path": "kubernetes/frontend/service.yaml",
+      "bytes": 377,
+      "sha256": "d5d81903cc0931031aaadc9292da76594e0e72d537ad507d8049c8a90d6f78a4"
+    },
+    {
+      "path": "kubernetes/backend/deployment.yaml",
+      "bytes": 1083,
+      "sha256": "635309798feee6debd83d5cbfb251662886017b2ff155cf08c5d7634f8c86763"
+    },
+    {
+      "path": "kubernetes/backend/service.yaml",
+      "bytes": 374,
+      "sha256": "f9bace75fb0c5cf548a6dfd3d78a47d3e6940b79876663eba709127c3f4bdda9"
+    }
+  ]
+}

@@ -17,9 +17,10 @@ const parsed = validateArchitectureSpec({
 });
 assert.equal(parsed.success, true);
 const spec = parsed.success ? parsed.data : (() => { throw new Error('fixture spec is invalid'); })();
+const project = { id: '01a037bf-5bff-7285-a0d0-0d8e79272479', name: 'shop' };
 
 test('planGeneratedFiles generates source only for node-runtime services', () => {
-  const files = planGeneratedFiles(spec);
+  const files = planGeneratedFiles(spec, project);
   const paths = files.map((file) => file.path);
   assert.ok(paths.includes('generated/frontend/src/server.js'));
   assert.ok(paths.includes('generated/backend/src/server.js'));
@@ -27,7 +28,7 @@ test('planGeneratedFiles generates source only for node-runtime services', () =>
 });
 
 test('planGeneratedFiles writes a docker-compose.yml and kubernetes manifests', () => {
-  const files = planGeneratedFiles(spec);
+  const files = planGeneratedFiles(spec, project);
   const paths = files.map((file) => file.path);
   assert.ok(paths.includes('docker/docker-compose.yml'));
   assert.ok(paths.includes('kubernetes/namespace.yaml'));
@@ -39,7 +40,7 @@ test('planGeneratedFiles writes a docker-compose.yml and kubernetes manifests', 
 test('writeGeneratedFiles writes real files to disk with matching hashes', () => {
   const dir = mkdtempSync(join(tmpdir(), 'kubeverse-generate-'));
   try {
-    const files = planGeneratedFiles(spec);
+    const files = planGeneratedFiles(spec, project);
     const records = writeGeneratedFiles(dir, files);
     assert.equal(records.length, files.length);
     const composeRecord = records.find((record) => record.path === 'docker/docker-compose.yml');

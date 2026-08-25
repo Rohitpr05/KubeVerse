@@ -3,10 +3,13 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-export async function checkKubectlAvailable(): Promise<{ available: boolean; context?: string; error?: string }> {
+export async function checkKubectlAvailable(): Promise<{ available: boolean; context?: string; server?: string; error?: string }> {
   try {
-    const { stdout } = await execFileAsync('kubectl', ['config', 'current-context'], { timeout: 3000 });
-    return { available: true, context: stdout.trim() };
+    const { stdout: context } = await execFileAsync('kubectl', ['config', 'current-context'], { timeout: 3000 });
+    const server = await execFileAsync('kubectl', ['config', 'view', '--minify', '-o', 'jsonpath={.clusters[0].cluster.server}'], { timeout: 3000 })
+      .then(({ stdout }) => stdout.trim() || undefined)
+      .catch(() => undefined);
+    return { available: true, context: context.trim(), server };
   } catch (error) {
     return { available: false, error: error instanceof Error ? error.message : 'kubectl command failed' };
   }

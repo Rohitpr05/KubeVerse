@@ -1,12 +1,24 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { architectureSpecSchema } from '../schema.js';
+import { toStrictJsonSchema } from './strictJsonSchema.js';
 import type { AiProvider, CompileOptions, CredentialCheck } from './types.js';
 
 const API_BASE = 'https://openrouter.ai/api/v1';
 
 // $refStrategy 'none' inlines nested object schemas instead of $ref/definitions,
 // which is safer for structured-output support that varies by model/provider.
-const responseJsonSchema = zodToJsonSchema(architectureSpecSchema, { name: 'architecture_spec', $refStrategy: 'none' });
+// target: 'openAi' makes every optional/defaulted field nullable-and-required
+// instead of omittable, which OpenAI/OpenRouter's strict structured-output
+// mode requires of every object's `required` array (see schema.ts's
+// `withDefault`/`optionalNullable`, which keep the Zod side of the same
+// fields accepting the resulting `null` values). toStrictJsonSchema then
+// fixes a second, separate strict-mode incompatibility zod-to-json-schema's
+// "openAi" target does not handle - see strictJsonSchema.ts for exactly why.
+// Exported so openrouter.test.ts can assert against the exact schema document
+// sent to OpenRouter, not a reconstruction of it.
+export const responseJsonSchema = toStrictJsonSchema(
+  zodToJsonSchema(architectureSpecSchema, { name: 'architecture_spec', $refStrategy: 'none', target: 'openAi' }),
+);
 
 const SYSTEM_PROMPT = `You are KubeVerse's architecture compiler. Convert the user's plain-language application description into a single JSON object that matches the provided schema exactly.
 Rules:
@@ -16,7 +28,8 @@ Rules:
 - Use runtime "mongodb", "redis", "postgres", or "mysql" for managed data stores instead of "node" - these use a well-known image and do not get generated source code.
 - Populate "dependsOn" with the names of services this service calls or connects to.
 - Populate "traffic" with the request/data flow relationships the user described.
-- Do not invent services the user did not describe or imply.`;
+- Do not invent services the user did not describe or imply.
+- Several fields (e.g. resources, healthCheck, replicas, protocol, command, volume) have sensible defaults. If you have no specific opinion, set them to null rather than guessing.`;
 
 export const openRouterProvider: AiProvider = {
   id: 'openrouter',

@@ -1,5 +1,6 @@
 import { stringify } from 'yaml';
 import type { ArchitectureSpec, ServiceSpec } from '../architecture/schema.js';
+import { ownershipLabels, type ProjectContext } from '../ownership.js';
 import { managedImageFor } from './managedService.js';
 import type { GeneratedFile } from './types.js';
 
@@ -10,12 +11,22 @@ function namespaceName(spec: ArchitectureSpec): string {
 // Deterministically derives Namespace/Deployment/Service/ConfigMap/Secret/PVC/
 // Ingress manifests from the validated NAM - never from raw AI output - reusing
 // the probe/label conventions already used by examples/legacy-simulator/k8s.
-export function generateKubernetesManifests(spec: ArchitectureSpec): GeneratedFile[] {
+//
+// Every generated resource carries the KubeVerse ownership labels
+// (backend/src/ownership.ts) so the observer's project-scoped Playground
+// queries can reliably tell which real cluster resources belong to this
+// project. Deployments additionally carry them on the Pod template
+// (spec.template.metadata.labels), not just the Deployment's own metadata -
+// Kubernetes propagates pod-template labels onto the ReplicaSet and Pods it
+// creates, so those inherit ownership automatically without KubeVerse ever
+// touching a ReplicaSet/Pod object directly.
+export function generateKubernetesManifests(spec: ArchitectureSpec, project: ProjectContext): GeneratedFile[] {
   const ns = namespaceName(spec);
+  const ownership = ownershipLabels(project);
   const files: GeneratedFile[] = [
     {
       path: 'kubernetes/namespace.yaml',
-      contents: stringify({ apiVersion: 'v1', kind: 'Namespace', metadata: { name: ns, labels: { 'kubeverse.dev/project': spec.name } } }),
+      contents: stringify({ apiVersion: 'v1', kind: 'Namespace', metadata: { name: ns, labels: { ...ownership } } }),
     },
   ];
 
@@ -59,12 +70,17 @@ export function generateKubernetesManifests(spec: ArchitectureSpec): GeneratedFi
     const deployment = {
       apiVersion: 'apps/v1',
       kind: 'Deployment',
-      metadata: { name: service.name, namespace: ns, labels: { app: service.name } },
+      metadata: { name: service.name, namespace: ns, labels: { app: service.name, ...ownership } },
       spec: {
         replicas: service.replicas,
+        // The selector stays scoped to just this service (unique within the
+        // project's namespace, validated by the NAM's duplicate-name check) -
+        // only the pod *template* additionally carries the project-wide
+        // ownership labels, since Kubernetes requires every selector key to
+        // also appear on the template, but not the other way around.
         selector: { matchLabels: { app: service.name } },
         template: {
-          metadata: { labels: { app: service.name } },
+          metadata: { labels: { app: service.name, ...ownership } },
           spec: {
             containers: [container],
             volumes: usesVolume ? [{ name: volumeName, persistentVolumeClaim: { claimName: volumeName } }] : undefined,
@@ -76,7 +92,7 @@ export function generateKubernetesManifests(spec: ArchitectureSpec): GeneratedFi
     const service_ = {
       apiVersion: 'v1',
       kind: 'Service',
-      metadata: { name: service.name, namespace: ns, labels: { app: service.name } },
+      metadata: { name: service.name, namespace: ns, labels: { app: service.name, ...ownership } },
       spec: { selector: { app: service.name }, ports: [{ port: containerPort, targetPort: containerPort }], type: service.expose ? 'LoadBalancer' : 'ClusterIP' },
     };
 
@@ -86,13 +102,13 @@ export function generateKubernetesManifests(spec: ArchitectureSpec): GeneratedFi
     if (hasConfigEnv) {
       files.push({
         path: `kubernetes/${service.name}/configmap.yaml`,
-        contents: stringify({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: `${service.name}-config`, namespace: ns }, data: service.env }),
+        contents: stringify({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: `${service.name}-config`, namespace: ns, labels: { app: service.name, ...ownership } }, data: service.env }),
       });
     }
     if (hasSecretEnv) {
       files.push({
         path: `kubernetes/${service.name}/secret.yaml`,
-        contents: stringify({ apiVersion: 'v1', kind: 'Secret', metadata: { name: `${service.name}-secret`, namespace: ns }, stringData: managed!.env }),
+        contents: stringify({ apiVersion: 'v1', kind: 'Secret', metadata: { name: `${service.name}-secret`, namespace: ns, labels: { app: service.name, ...ownership } }, stringData: managed!.env }),
       });
     }
     if (usesVolume) {
@@ -101,7 +117,7 @@ export function generateKubernetesManifests(spec: ArchitectureSpec): GeneratedFi
         contents: stringify({
           apiVersion: 'v1',
           kind: 'PersistentVolumeClaim',
-          metadata: { name: volumeName, namespace: ns },
+          metadata: { name: volumeName, namespace: ns, labels: { app: service.name, ...ownership } },
           spec: { accessModes: ['ReadWriteOnce'], resources: { requests: { storage: '1Gi' } } },
         }),
       });
@@ -114,7 +130,7 @@ export function generateKubernetesManifests(spec: ArchitectureSpec): GeneratedFi
     const ingress = {
       apiVersion: 'networking.k8s.io/v1',
       kind: 'Ingress',
-      metadata: { name: `${spec.name}-ingress`, namespace: ns },
+      metadata: { name: `${spec.name}-ingress`, namespace: ns, labels: { ...ownership } },
       spec: {
         rules: [
           {

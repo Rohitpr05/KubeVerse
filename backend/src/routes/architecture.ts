@@ -46,7 +46,7 @@ export function registerArchitectureRoutes(app: FastifyInstance): void {
       return reply.code(400).send({ error: 'No compiled architecture spec yet. Compile the architecture before generating a project.' });
     }
 
-    const files = planGeneratedFiles(state.spec);
+    const files = planGeneratedFiles(state.spec, { id: project.id, name: project.name });
     const records = writeGeneratedFiles(project.path, files);
     const next = writeGeneratedState(project.path, { lastGeneratedAt: new Date().toISOString(), files: records });
     return { files: records, generatedState: next };
