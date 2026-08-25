@@ -2,10 +2,15 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import type { ServerResponse } from 'node:http';
-import type { ClusterUpdate } from '@simulator/shared/platform-contract';
+import type { ClusterUpdate } from '@kubeverse/shared';
 import { ClusterState } from './cluster-state.js';
 import { KubernetesObserver } from './kubernetes-observer.js';
 import { UnavailableMetricsProvider } from './metrics-provider.js';
+import { registerIdentityRoutes } from './routes/identity.js';
+import { registerSettingsRoutes } from './routes/settings.js';
+import { registerEnvironmentRoutes } from './routes/environment.js';
+import { registerProjectRoutes } from './routes/projects.js';
+import { registerArchitectureRoutes } from './routes/architecture.js';
 
 const port = Number(process.env.PLATFORM_PORT ?? 4000);
 const host = process.env.PLATFORM_HOST ?? '127.0.0.1';
@@ -23,6 +28,12 @@ const observer = new KubernetesObserver(state, namespaceFilter);
 const metrics = new UnavailableMetricsProvider();
 
 await app.register(cors, { origin: true });
+
+registerIdentityRoutes(app);
+registerSettingsRoutes(app);
+registerEnvironmentRoutes(app);
+registerProjectRoutes(app);
+registerArchitectureRoutes(app);
 
 app.get('/health', async () => ({ status: 'ok', service: 'platform-backend' }));
 app.get('/live', async () => ({ status: 'alive', service: 'platform-backend' }));
@@ -50,18 +61,6 @@ app.get('/logs', async (request, reply) => {
   } catch (error) {
     request.log.warn({ error, namespace: query.namespace, pod: query.name }, 'pod log request failed');
     return reply.code(502).send({ error: error instanceof Error ? error.message : 'Pod log request failed' });
-  }
-});
-app.get('/simulator/traffic', async (_request, reply) => {
-  const gateway = state.resources({ kind: 'Pod', search: 'gateway' }).find((resource) => resource.labels.app === 'gateway' && resource.namespace);
-  if (!gateway?.namespace) return { events: [], message: 'No running Gateway Pod is currently observable.' };
-  try {
-    const response = await observer.readPodProxy(gateway.namespace, gateway.name, 'events');
-    const parsed = typeof response === 'string' ? JSON.parse(response) : response;
-    return { events: parsed.events ?? [], gatewayPod: gateway.name };
-  } catch (error) {
-    _request.log.warn({ error }, 'gateway traffic event proxy failed');
-    return reply.code(502).send({ events: [], error: error instanceof Error ? error.message : 'Gateway event proxy failed' });
   }
 });
 app.get('/events', (request, reply) => {

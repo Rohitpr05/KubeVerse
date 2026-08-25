@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ClusterResource, ResourceDetail } from '@simulator/shared/platform-contract';
+import type { ClusterResource, ResourceDetail } from '@kubeverse/shared';
 
 function resourcePath(resource: ClusterResource): string { return `/resource/${resource.kind}/${resource.namespace ?? 'cluster'}/${encodeURIComponent(resource.name)}`; }
 function age(timestamp?: string): string { if (!timestamp) return 'unknown'; const seconds = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000)); return seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 3600)}h`; }

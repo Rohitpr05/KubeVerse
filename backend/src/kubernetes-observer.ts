@@ -1,6 +1,6 @@
 // KubernetesObserver lists first, then reconnects watches with a relist to avoid missed state changes.
 import * as k8s from '@kubernetes/client-node';
-import type { ClusterKind, ObservedKind, ObserverDiagnostics, ResourceAction } from '@simulator/shared/platform-contract';
+import type { ClusterKind, ObservedKind, ObserverDiagnostics, ResourceAction } from '@kubeverse/shared';
 import { ClusterState, type KubernetesObject } from './cluster-state.js';
 
 type WatchDefinition = { kind: Exclude<ClusterKind, 'Container'> | 'Event'; path: string; list: () => Promise<unknown> };

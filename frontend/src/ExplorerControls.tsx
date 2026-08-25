@@ -1,5 +1,5 @@
-import type { ClusterKind, ClusterStatistics } from '@simulator/shared/platform-contract';
-import { clusterKinds } from '@simulator/shared/platform-contract';
+import type { ClusterKind, ClusterStatistics } from '@kubeverse/shared';
+import { clusterKinds } from '@kubeverse/shared';
 
 export function ExplorerControls({ namespaces, namespace, setNamespace, search, setSearch, visibleKinds, toggleKind, statistics }: {
   namespaces: string[]; namespace: string; setNamespace: (value: string) => void; search: string; setSearch: (value: string) => void;

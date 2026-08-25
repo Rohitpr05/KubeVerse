@@ -1,5 +1,5 @@
 // Metrics are an abstraction so the explorer can adopt metrics.k8s.io without coupling graph state to one provider.
-import type { MetricsSnapshot } from '@simulator/shared/platform-contract';
+import type { MetricsSnapshot } from '@kubeverse/shared';
 
 export interface MetricsProvider { snapshot(namespace?: string): Promise<MetricsSnapshot>; }
 

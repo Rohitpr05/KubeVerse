@@ -1,5 +1,5 @@
 // The graph builder resolves ownership, selectors, scheduling, and storage references into reusable topology edges.
-import type { ClusterResource, GraphEdge, GraphNode, ResourceGraph } from '@simulator/shared/platform-contract';
+import type { ClusterResource, GraphEdge, GraphNode, ResourceGraph } from '@kubeverse/shared';
 
 function matchesSelector(labels: Record<string, string>, selector: Record<string, string> | undefined): boolean {
   return Boolean(selector && Object.entries(selector).every(([key, value]) => labels[key] === value));

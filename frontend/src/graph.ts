@@ -1,6 +1,6 @@
 // The frontend only lays out graph data projected by the backend; it never resolves Kubernetes relationships itself.
 import type { CSSProperties } from 'react';
-import type { ClusterKind, ClusterResource, ResourceGraph } from '@simulator/shared/platform-contract';
+import type { ClusterKind, ClusterResource, ResourceGraph } from '@kubeverse/shared';
 import type { Edge, Node } from '@xyflow/react';
 
 export type ExplorerNodeData = { resource: ClusterResource };

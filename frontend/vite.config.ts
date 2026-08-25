@@ -15,8 +15,8 @@ export default defineConfig({
       '/timeline': 'http://localhost:4000',
       '/logs': 'http://localhost:4000',
       '/metrics': 'http://localhost:4000',
-      '/simulator': 'http://localhost:4000',
-      '/diagnostics': 'http://localhost:4000'
+      '/diagnostics': 'http://localhost:4000',
+      '/api': 'http://localhost:4000'
     }
   }
 });

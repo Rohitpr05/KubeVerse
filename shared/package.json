@@ -1,10 +1,10 @@
 {
-  "name": "@simulator/shared",
-  "version": "1.0.0",
+  "name": "@kubeverse/shared",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
+    ".": "./platform-contract.ts",
     "./platform-contract": "./platform-contract.ts"
   }
 }

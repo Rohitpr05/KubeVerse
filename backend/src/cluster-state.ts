@@ -2,8 +2,8 @@
 import type {
   ClusterKind, ClusterResource, ClusterSnapshot, ClusterStatistics, ClusterUpdate, ObservedKind,
   ResourceAction, ResourceDetail, ResourceHistoryEntry, TimelineEvent
-} from '@simulator/shared/platform-contract';
-import { clusterKinds } from '@simulator/shared/platform-contract';
+} from '@kubeverse/shared';
+import { clusterKinds } from '@kubeverse/shared';
 import { stringify } from 'yaml';
 import { ResourceGraphBuilder } from './resource-graph.js';
 

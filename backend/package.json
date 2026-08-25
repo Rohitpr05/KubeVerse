@@ -1,18 +1,21 @@
 {
-  "name": "@simulator/platform-backend",
+  "name": "@kubeverse/backend",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@kubernetes/client-node": "^1.4.0",
-    "@simulator/shared": "1.0.0",
+    "@kubeverse/shared": "0.1.0",
     "@fastify/cors": "^11.1.0",
     "fastify": "^5.3.3",
-    "yaml": "^2.8.0"
+    "yaml": "^2.8.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {
     "tsx": "^4.20.3",

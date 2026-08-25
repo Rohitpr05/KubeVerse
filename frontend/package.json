@@ -1,5 +1,5 @@
 {
-  "name": "@simulator/platform-frontend",
+  "name": "@kubeverse/frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@simulator/shared": "1.0.0",
+    "@kubeverse/shared": "0.1.0",
     "@xyflow/react": "^12.8.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

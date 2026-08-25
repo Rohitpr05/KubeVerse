@@ -1,5 +1,7 @@
 # Interactive Kubernetes Learning Platform Architecture
 
+> **Superseded by [`KUBEVERSE_MASTER_SPEC.md`](../KUBEVERSE_MASTER_SPEC.md).** This document's observer/explorer design is still accurate and is now CURRENT in the master spec (§4.2, §4.7). Its "existing microservices remain the workloads being taught" framing below predates the KubeVerse pivot: the fixed Gateway/Validation/Security/OCR simulator has moved to `examples/legacy-simulator/` and is no longer the product's conceptual architecture - see the master spec for the current product direction.
+
 ## Decision summary
 
 The existing microservices remain the **workloads being taught**. A new
