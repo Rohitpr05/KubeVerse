@@ -6,7 +6,7 @@
 import type { CSSProperties } from 'react';
 import type { ClusterKind, ClusterResource, ResourceGraph } from '@kubeverse/shared';
 import type { Edge, Node } from '@xyflow/react';
-import { computeLayout, type Point } from './layout';
+import { computeLayout, resolveOverlaps, type Point } from './layout';
 
 export type ExplorerNodeData = { resource: ClusterResource };
 export type ExplorerNode = Node<ExplorerNodeData, 'resource'>;
@@ -24,8 +24,8 @@ const palette: Record<ClusterKind, string> = {
 // React Flow considers it to "have dimensions"
 // (node.measured?.width ?? node.width ?? node.initialWidth, see
 // @xyflow/system's nodeHasDimensions/getNodeDimensions).
-const NODE_WIDTH = 190;
-const NODE_HEIGHT = 70;
+export const NODE_WIDTH = 190;
+export const NODE_HEIGHT = 70;
 
 function synthesized(node: ResourceGraph['nodes'][number]): ClusterResource {
   return { uid: node.resourceUid, kind: node.kind, name: node.label, namespace: node.namespace, status: node.status, labels: {}, annotations: {}, conditions: [], references: [] };
@@ -62,24 +62,37 @@ export function layoutAllNodes(resources: ClusterResource[], graph: ResourceGrap
 // is currently on screen: a node that already exists keeps its exact
 // position - whether it was auto-laid-out earlier or the user dragged it -
 // and only gets fresh `data`/`style`; a node that no longer exists is
-// dropped; a genuinely new node gets a position from one fresh layout pass
-// over the *whole* graph (computed once, only when at least one new node
-// actually needs it), so it lands in a sensible, grouped spot without moving
-// anything already on screen. This is what makes "Pod Running ->
-// CrashLoopBackOff" update the pod's data in place instead of re-laying out
-// the whole topology.
+// dropped; a genuinely new node (e.g. the replacement Pod a Lab "Fail Pod"
+// experiment's ReplicaSet creates) gets a position from one fresh layout
+// pass over the *whole* graph (computed once, only when at least one new
+// node actually needs it). A fresh layout pass has no idea where the
+// existing, frozen nodes currently sit on screen though, so its proposed
+// position for a new node could land on top of one of them - resolveOverlaps
+// is run over the combined set (existing positions marked `fixed`, so only
+// the new nodes can be nudged) to guarantee the result the same no-overlap
+// contract layoutAllNodes already gives a fresh project, without moving
+// anything already on screen. This is what makes both "Pod Running ->
+// CrashLoopBackOff" (pure data update) and "Pod replaced by a new one"
+// (one new node inserted cleanly) work without a full re-layout.
 export function reconcileNodes(current: ExplorerNode[], resources: ClusterResource[], graph: ResourceGraph | undefined): ExplorerNode[] {
   if (!graph) return [];
   const resourceByUid = new Map(resources.map((resource) => [resource.uid, resource]));
   const currentById = new Map(current.map((node) => [node.id, node]));
-  const hasNewNode = graph.nodes.some((node) => !currentById.has(node.id));
-  const freshPositions = hasNewNode ? computeLayout(graph) : undefined;
+  const newNodeIds = new Set(graph.nodes.filter((node) => !currentById.has(node.id)).map((node) => node.id));
+
+  let positions: Map<string, Point> | undefined;
+  if (newNodeIds.size > 0) {
+    positions = computeLayout(graph);
+    const fixed = new Set(currentById.keys());
+    for (const [id, node] of currentById) positions.set(id, node.position);
+    resolveOverlaps(positions, fixed);
+  }
 
   return graph.nodes.map((node) => {
     const resource = resourceByUid.get(node.resourceUid) ?? synthesized(node);
     const existing = currentById.get(node.id);
     if (existing) return { ...existing, data: { resource }, style: { '--accent': palette[node.kind] } as CSSProperties };
-    return buildNode(node, resource, freshPositions?.get(node.id) ?? { x: 0, y: 0 });
+    return buildNode(node, resource, positions?.get(node.id) ?? { x: 0, y: 0 });
   });
 }
 

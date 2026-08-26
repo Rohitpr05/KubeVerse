@@ -2,7 +2,7 @@
 // environment, projects, architecture). The observer routes used by
 // PlaygroundView stay as plain inline fetches - they predate this module and
 // don't need it.
-import type { ClusterResource, LabExperiment } from '@kubeverse/shared';
+import type { LabExperiment } from '@kubeverse/shared';
 
 export interface Identity {
   installationId: string;
@@ -142,4 +142,24 @@ export const api = {
   dockerUp: (projectId: string) => fetch(`/api/projects/${projectId}/docker/up`, { method: 'POST' }).then((response) => asJson<ExecutionResult>(response)),
   dockerDown: (projectId: string) => fetch(`/api/projects/${projectId}/docker/down`, { method: 'POST' }).then((response) => asJson<ExecutionResult>(response)),
   kubernetesApply: (projectId: string) => fetch(`/api/projects/${projectId}/kubernetes/apply`, { method: 'POST' }).then((response) => asJson<ExecutionResult>(response)),
+
+  // Phase 2 Lab: narrow, project-scoped experiment operations
+  // (backend/src/routes/lab.ts). Every mutating call here targets exactly
+  // one resource the backend independently re-verifies belongs to this
+  // project - the frontend never has (or needs) mutation authority beyond
+  // what these specific endpoints expose.
+  listExperiments: (projectId: string) => fetch(`/api/projects/${projectId}/lab/experiments`).then((response) => asJson<{ experiments: LabExperiment[] }>(response)),
+  startTraffic: (projectId: string, body: { serviceNamespace: string; serviceName: string; requests: number; requestsPerSecond: number }) =>
+    fetch(`/api/projects/${projectId}/lab/traffic`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((response) => asJson<LabExperiment>(response)),
+  cancelExperiment: (projectId: string, experimentId: string) =>
+    fetch(`/api/projects/${projectId}/lab/experiments/${experimentId}/cancel`, { method: 'POST' }).then((response) => asJson<LabExperiment>(response)),
+  failPod: (projectId: string, name: string, namespace: string) =>
+    fetch(`/api/projects/${projectId}/lab/pods/${encodeURIComponent(name)}/fail`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ namespace }) })
+      .then((response) => asJson<{ experiment: LabExperiment; result: ExecutionResult }>(response)),
+  restartWorkload: (projectId: string, name: string, namespace: string) =>
+    fetch(`/api/projects/${projectId}/lab/deployments/${encodeURIComponent(name)}/restart`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ namespace }) })
+      .then((response) => asJson<{ experiment: LabExperiment; result: ExecutionResult }>(response)),
+  scaleWorkload: (projectId: string, name: string, namespace: string, replicas: number) =>
+    fetch(`/api/projects/${projectId}/lab/deployments/${encodeURIComponent(name)}/scale`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ namespace, replicas }) })
+      .then((response) => asJson<{ experiment: LabExperiment; result: ExecutionResult }>(response)),
 };

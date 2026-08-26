@@ -1,14 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, type Edge, type NodeMouseHandler, type ReactFlowInstance } from '@xyflow/react';
-import { clusterKinds, type ClusterResource, type ClusterSnapshot, type ResourceGraph } from '@kubeverse/shared';
-import { buildExplorerEdges, filterVisible, layoutAllNodes, reconcileNodes, type ExplorerNode, type ExplorerNodeData } from '../graph';
+import { clusterKinds, type ClusterResource, type ClusterSnapshot, type LabExperiment, type ResourceGraph } from '@kubeverse/shared';
+import { buildExplorerEdges, filterVisible, layoutAllNodes, NODE_HEIGHT, NODE_WIDTH, reconcileNodes, type ExplorerNode, type ExplorerNodeData } from '../graph';
 import { Inspector } from '../Inspector';
 import { ResourceNode } from '../ResourceNode';
 import { ExplorerControls } from '../ExplorerControls';
-import { Timeline } from '../Timeline';
 import { api, type EnvironmentStatus, type ProjectSummary } from '../api';
 import { shouldResetForProjectChange } from '../playgroundState';
+import { LabPanel } from '../lab/LabPanel';
+import { ActivityStrip } from '../lab/ActivityStrip';
+import { TrafficParticles, type Particle } from '../lab/TrafficParticles';
 import type { ViewId } from '../shell/Sidebar';
+
+const MAX_EXPERIMENTS_SHOWN = 20;
+const PARTICLE_LIFETIME_MS = 700;
+
+function upsertExperiment(list: LabExperiment[], next: LabExperiment): LabExperiment[] {
+  const withoutNext = list.filter((experiment) => experiment.id !== next.id);
+  return [next, ...withoutNext].slice(0, MAX_EXPERIMENTS_SHOWN);
+}
+
+function nodeCenter(nodes: ExplorerNode[], kind: string, namespace: string | undefined, name: string): { x: number; y: number } | undefined {
+  const node = nodes.find((candidate) => candidate.data.resource.kind === kind && candidate.data.resource.namespace === namespace && candidate.data.resource.name === name);
+  return node ? { x: node.position.x + NODE_WIDTH / 2, y: node.position.y + NODE_HEIGHT / 2 } : undefined;
+}
 
 const emptySnapshot: ClusterSnapshot = {
   generatedAt: '', resources: [], events: [], observerErrors: [],
@@ -69,7 +84,12 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
   const [environment, setEnvironment] = useState<EnvironmentStatus>();
   const [retryKey, setRetryKey] = useState(0);
   const [locked, setLocked] = useState(true);
+  const [experiments, setExperiments] = useState<LabExperiment[]>([]);
+  const [activeExperimentId, setActiveExperimentId] = useState<string>();
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [labError, setLabError] = useState<string>();
   const projectId = currentProject?.id;
+  const lastTrafficSentRef = useRef<Map<string, number>>(new Map());
 
   // React-Flow-owned topology state (Task 5): this - not resourceGraph - is
   // the single source of truth for node *position*. resourceGraph only ever
@@ -117,6 +137,39 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
     setRfNodes(layoutAllNodes(snapshot.resources, resourceGraph));
     requestAnimationFrame(() => flow?.fitView({ padding: 0.16, minZoom: 0.25, maxZoom: 1 }));
   }, [resourceGraph, snapshot.resources, flow, setRfNodes]);
+
+  // Applies one Lab experiment update (from the initial GET or a `lab-update`
+  // SSE event - see the SSE effect below) into local state, and - only for a
+  // traffic experiment whose measured `sent` count actually grew since the
+  // last update - spawns one aggregated traffic particle animating from the
+  // target Service's node to whichever Pod the backend's last real request
+  // in that batch actually reached (lab/trafficRunner.ts). This is the only
+  // place particles are created: never per-request, never for a kind other
+  // than 'traffic', and never pointed at a Pod the backend didn't actually
+  // hit.
+  const applyExperimentUpdate = useCallback((experiment: LabExperiment) => {
+    setExperiments((current) => upsertExperiment(current, experiment));
+
+    const traffic = experiment.traffic;
+    if (experiment.kind === 'traffic' && traffic && traffic.lastHitPod) {
+      const previousSent = lastTrafficSentRef.current.get(experiment.id) ?? 0;
+      if (traffic.sent > previousSent) {
+        lastTrafficSentRef.current.set(experiment.id, traffic.sent);
+        const from = nodeCenter(rfNodes, experiment.target.kind, experiment.target.namespace, experiment.target.name);
+        const to = nodeCenter(rfNodes, 'Pod', experiment.target.namespace, traffic.lastHitPod);
+        if (from && to) {
+          const particleId = `${experiment.id}:${traffic.sent}`;
+          // `ok` reflects this batch's overall error rate, not one specific
+          // request's outcome - trafficRunner reports cumulative stats, not
+          // a per-request success flag, so that's the only honest signal
+          // available for this particle's styling.
+          setParticles((current) => [...current, { id: particleId, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, ok: traffic.errorRate < 0.5 }]);
+          setTimeout(() => setParticles((current) => current.filter((particle) => particle.id !== particleId)), PARTICLE_LIFETIME_MS);
+        }
+      }
+    }
+    if (experiment.status === 'preparing' || experiment.status === 'running') setActiveExperimentId(experiment.id);
+  }, [rfNodes]);
 
   const refresh = useCallback(async () => {
     const targetProjectId = requestedProjectIdRef.current;
@@ -195,6 +248,7 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
   useEffect(() => {
     if (!projectId) return;
     void refresh();
+    void api.listExperiments(projectId).then(({ experiments: initial }) => setExperiments(initial)).catch(() => undefined);
     const source = new EventSource(`/events?projectId=${encodeURIComponent(projectId)}`);
     // Both event types are treated purely as "something may have changed,
     // reconcile" signals - neither applies its payload directly. That keeps
@@ -202,9 +256,22 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
     // so the two can't ever land in different renders relative to each other.
     source.addEventListener('snapshot', () => { void refresh(); });
     source.addEventListener('cluster-update', () => { void refresh(); });
+    // Lab experiment progress/transitions (Phase 2) - a separate event type
+    // on the same per-project stream, applied directly since each payload
+    // IS the full current experiment, not a delta to reconcile.
+    source.addEventListener('lab-update', (event) => applyExperimentUpdate(JSON.parse((event as MessageEvent).data) as LabExperiment));
     source.onerror = () => setError('Live connection interrupted. The browser will retry automatically.');
     return () => source.close();
-  }, [refresh, projectId, retryKey]);
+  }, [refresh, projectId, retryKey, applyExperimentUpdate]);
+
+  // Switching projects must also clear the previous project's experiments/
+  // particles - they're just as project-scoped as the topology itself.
+  useEffect(() => {
+    setExperiments([]);
+    setActiveExperimentId(undefined);
+    setParticles([]);
+    lastTrafficSentRef.current.clear();
+  }, [projectId]);
 
   useEffect(() => {
     if (!flow || visibleNodes.length === 0) return;
@@ -235,6 +302,8 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
     void refresh();
     void api.getEnvironment().then(setEnvironment).catch(() => undefined);
   }
+
+  const activeExperiment = experiments.find((experiment) => experiment.id === activeExperimentId);
 
   const selectNode: NodeMouseHandler = (_, node) => setSelected((node.data as ExplorerNodeData).resource);
   const toggleKind = (kind: typeof clusterKinds[number]) => setVisibleKinds((current) => {
@@ -292,7 +361,18 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
         ) : (!currentProject || updating) && (
           <div className="observer-warning updating">{!currentProject ? 'Reconnecting to project…' : 'Updating cluster state…'}</div>
         )}
+        {labError && <div className="observer-warning error" onClick={() => setLabError(undefined)}>⚠ {labError} (click to dismiss)</div>}
+        <div className="playground-body">
         <section className="explorer-layout">
+          {projectId && (
+            <LabPanel
+              projectId={projectId}
+              resources={snapshot.resources}
+              activeExperiment={activeExperiment}
+              onExperimentStarted={applyExperimentUpdate}
+              onError={setLabError}
+            />
+          )}
           <div className="canvas">
             <ReactFlow<ExplorerNode>
               nodes={visibleNodes}
@@ -311,10 +391,13 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
               <Background gap={18} size={1} />
               <Controls />
               <MiniMap />
+              <TrafficParticles particles={particles} />
             </ReactFlow>
           </div>
-          <aside className="side-panel"><Inspector resource={selected} /><Timeline events={snapshot.events} /></aside>
+          <aside className="side-panel"><Inspector resource={selected} /></aside>
         </section>
+        <ActivityStrip experiments={experiments} events={snapshot.events} />
+        </div>
         </>
       )}
     </div>

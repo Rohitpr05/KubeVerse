@@ -14,7 +14,19 @@ import { ClusterState } from '../cluster-state.js';
 import { deletePod, restartDeployment, scaleDeployment } from '../execution/kubernetesRunner.js';
 import { ExperimentTracker } from '../lab/experiments.js';
 import { runTrafficExperiment, type TrafficTarget } from '../lab/trafficRunner.js';
-import { getProjectById } from '../workspace.js';
+import { getProjectById, readGeneratedState, type ProjectSummary } from '../workspace.js';
+
+const DEFAULT_HEALTH_PATH = '/health';
+
+// The generated Node service's actual health path is whatever the NAM's
+// healthCheck.path said (schema.ts defaults it to '/health', but a real
+// architecture.md can override it) - reading it from the project's own
+// generated-state.json is the only way to know the real path instead of
+// guessing/hardcoding one that might 404 on a perfectly healthy service.
+function healthPathFor(project: ProjectSummary, serviceName: string): string {
+  const spec = readGeneratedState(project.path).spec;
+  return spec?.services.find((service) => service.name === serviceName)?.healthCheck.path ?? DEFAULT_HEALTH_PATH;
+}
 
 interface ProjectParams { id: string; }
 interface NamedTargetParams extends ProjectParams { name: string; }
@@ -38,21 +50,11 @@ function resolveOwnedTarget(state: ClusterState, projectId: string, kind: string
 export function registerLabRoutes(app: FastifyInstance, state: ClusterState, experiments: ExperimentTracker): void {
   const activeTraffic = new Map<string, AbortController>();
 
-  // Lists this project's own Deployments/Services/Pods - what the frontend's
-  // Lab Controls panel offers as experiment targets. Never the whole
-  // cluster: it's the same project-scoped projection the Playground itself
-  // already uses (ClusterState.projectResources).
-  app.get('/api/projects/:id/lab/targets', async (request, reply) => {
-    const { id } = request.params as ProjectParams;
-    const project = getProjectById(id);
-    if (!project) return reply.code(404).send({ error: 'Project not found.' });
-    const resources = state.projectResources(id);
-    return {
-      deployments: resources.filter((resource) => resource.kind === 'Deployment'),
-      services: resources.filter((resource) => resource.kind === 'Service'),
-      pods: resources.filter((resource) => resource.kind === 'Pod'),
-    };
-  });
+  // Lab Controls' target dropdowns (Deployments/Services/Pods to experiment
+  // against) are populated from the Playground's own already-live,
+  // already-project-scoped `/snapshot?projectId=` resources - there is no
+  // separate "list lab targets" endpoint, since that would just be a second
+  // way to fetch the exact same data.
 
   app.get('/api/projects/:id/lab/experiments', async (request, reply) => {
     const { id } = request.params as ProjectParams;
@@ -170,7 +172,7 @@ export function registerLabRoutes(app: FastifyInstance, state: ClusterState, exp
     experiments.setRunning(experiment.id);
 
     void runTrafficExperiment({
-      totalRequests: requests, requestsPerSecond, path: '/health', remotePort: port.targetPort,
+      totalRequests: requests, requestsPerSecond, path: healthPathFor(project, service.name), remotePort: port.targetPort,
       targets, signal: controller.signal,
       onProgress: (stats) => experiments.updateTraffic(experiment.id, stats),
     })

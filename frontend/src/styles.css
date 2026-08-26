@@ -133,7 +133,14 @@ button, input, select { font: inherit; }
 .popover-panel { position: fixed; z-index: 1000; display: grid; grid-template-columns: repeat(2, max-content); gap: 5px 10px; width: max-content; max-width: calc(100vw - 16px); padding: 10px; border: 1px solid #3a4a61; border-radius: 6px; background: #101a2c; box-shadow: 0 10px 25px #020617aa; }
 .popover-panel label { font-size: .7rem; color: #c5d3e4; display: flex; align-items: center; gap: 5px; }
 .kind-filters { display: contents; }
-.explorer-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; }
+/* Phase 2 layout: Lab Controls | Topology | Inspector on top, a full-width
+   Live Experiment / Kubernetes Timeline strip below (KUBEVERSE_MASTER_SPEC.md
+   Phase 2, Part 14). .playground-body owns the flex:1 role .explorer-layout
+   used to have alone; .explorer-layout is now a fixed-ratio row within it so
+   .activity-strip always keeps a stable height instead of being squeezed to
+   nothing on a short viewport. */
+.playground-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.explorer-layout { flex: 3; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr) 360px; }
 .canvas { isolation: isolate; min-width: 0; min-height: 0; height: 100%; background: #0c1525; }.react-flow { height: 100%; width: 100%; }.react-flow__controls { box-shadow: 0 2px 8px #02061799; }.react-flow__controls button { background: #162238; border-color: #33465f; color: #cbd5e1; }.react-flow__edge-text { fill: #cbd5e1; font-size: 10px; }
 /* MiniMap (Task 6): the dark Playground background must read through it, not
    a solid grey block, so the outer background is a translucent wash rather
@@ -165,7 +172,57 @@ button, input, select { font: inherit; }
 .side-panel { min-width: 0; min-height: 0; overflow-y: auto; border-left: 1px solid #26354b; background: #0f172a; }.inspector { padding: 17px; border-bottom: 1px solid #26354b; }.inspector.empty { color: #9eafc3; line-height: 1.45; min-height: 180px; }.inspector.empty h2 { color: #e2e8f0; }.inspector h2 { overflow-wrap: anywhere; margin: 0 0 6px; font-size: 1rem; }.kind-badge { display: inline-block; margin: 0 0 15px; padding: 3px 7px; border-radius: 999px; color: #bcd4f6; background: #1e3a5f; font-size: .67rem; font-weight: 700; }
 .inspector h3, .yaml-details summary { margin: 19px 0 7px; color: #b9c7d8; font-size: .76rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }.yaml-details summary { cursor: pointer; }.yaml-details[open] summary { margin-bottom: 8px; }
 dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-size: .78rem; margin: 0; } dt { color: #8495aa; } dd { margin: 0; overflow-wrap: anywhere; color: #e0eaf6; }.inspector ul { list-style: none; padding: 0; margin: 0; font-size: .72rem; }.inspector li { padding: 5px 0; border-bottom: 1px solid #1d2b3e; overflow-wrap: anywhere; }.inspector code { color: #93c5fd; }.muted { color: #8798ac; font-size: .78rem; }.yaml, .logs { max-height: 300px; margin: 0; overflow: auto; border: 1px solid #283950; border-radius: 5px; padding: 9px; background: #09111e; color: #bfdbfe; font: .68rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }.logs { color: #c7d2fe; }.error { color: #fca5a5; font-size: .75rem; }
-.timeline { padding: 16px; }.timeline h2 { margin: 0 0 10px; color: #dce8f6; font-size: .86rem; }.timeline ol { list-style: none; padding: 0; margin: 0; }.timeline li { display: grid; grid-template-columns: 62px 80px minmax(0, 1fr); gap: 6px; padding: 7px 0; border-bottom: 1px solid #1d2b3e; color: #bfccdc; font-size: .69rem; overflow-wrap: anywhere; }.timeline time { color: #7f91a7; }.event-source { border-radius: 3px; padding: 1px 4px; width: max-content; height: max-content; font-size: .61rem; font-weight: 700; }.event-source.kubernetes_event { color: #bae6fd; background: #0c4a6e; }.event-source.resource_change { color: #ddd6fe; background: #4c1d95; }
+.timeline { padding: 16px; min-width: 0; }.timeline h2 { margin: 0 0 10px; color: #dce8f6; font-size: .86rem; }.timeline ol { list-style: none; padding: 0; margin: 0; }.timeline li { display: grid; grid-template-columns: 62px 80px minmax(0, 1fr); gap: 6px; padding: 7px 0; border-bottom: 1px solid #1d2b3e; color: #bfccdc; font-size: .69rem; overflow-wrap: anywhere; }.timeline time { color: #7f91a7; }.event-source { border-radius: 3px; padding: 1px 4px; width: max-content; height: max-content; font-size: .61rem; font-weight: 700; }.event-source.kubernetes_event { color: #bae6fd; background: #0c4a6e; }.event-source.resource_change { color: #ddd6fe; background: #4c1d95; }
+
+/* --- Phase 2: Lab Controls panel --- */
+.lab-panel { min-width: 0; min-height: 0; overflow-y: auto; border-right: 1px solid #26354b; background: #0f172a; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.lab-panel.collapsed { padding: 10px 6px; align-items: center; }
+.lab-panel-toggle { border: 1px solid #33465f; border-radius: 5px; background: #142036; color: #c5d3e4; cursor: pointer; padding: 4px 8px; font-size: .8rem; }
+.lab-panel-toggle:hover { background: #1a2740; }
+.lab-panel-header { display: flex; align-items: center; justify-content: space-between; }
+.lab-panel-header h2 { margin: 0; font-size: .84rem; color: #dce8f6; }
+.lab-control { border: 1px solid #26354b; border-radius: 7px; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; background: #0b1322; }
+.lab-control h3 { margin: 0; font-size: .72rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; color: #9eafc3; }
+.lab-control label { display: flex; flex-direction: column; gap: 3px; font-size: .74rem; color: #9eafc3; }
+.lab-control select, .lab-control input[type="number"] { border: 1px solid #33465f; border-radius: 5px; background: #0b1322; color: #e2e8f0; padding: 5px 7px; font-size: .78rem; }
+.lab-control button { border: 1px solid #33465f; border-radius: 5px; background: #1e3a5f; color: #eaf2fd; cursor: pointer; padding: 6px 10px; font-size: .78rem; font-weight: 600; }
+.lab-control button:hover:not(:disabled) { background: #274a76; }
+.lab-control button:disabled { opacity: .5; cursor: not-allowed; }
+.lab-hint { margin: 0; color: #7f91a7; font-size: .67rem; line-height: 1.4; }
+.scale-stepper { display: flex; align-items: center; gap: 10px; justify-content: center; }
+.scale-stepper button { width: 28px; height: 28px; padding: 0; }
+.scale-stepper span { min-width: 20px; text-align: center; font-weight: 650; }
+.lab-active-experiment { border: 1px solid #4c7bd1; border-radius: 7px; padding: 10px 12px; background: #101a2c; display: flex; flex-direction: column; gap: 6px; }
+.lab-active-experiment p { margin: 0; font-size: .78rem; }
+
+/* --- Phase 2: bottom Live Experiment / Kubernetes Timeline strip --- */
+.activity-strip { flex: 1; min-height: 160px; max-height: 260px; display: flex; gap: 0; border-top: 1px solid #26354b; background: #0f172a; overflow: hidden; }
+.activity-experiments { flex: 1.4; min-width: 0; overflow-y: auto; padding: 14px; border-right: 1px solid #26354b; display: flex; flex-direction: column; gap: 10px; }
+.activity-experiments h2 { margin: 0; font-size: .86rem; color: #dce8f6; }
+.activity-strip .timeline { flex: 1; overflow-y: auto; }
+.experiment-card { border: 1px solid #26354b; border-radius: 7px; padding: 10px 12px; background: #0b1322; }
+.experiment-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.experiment-card header strong { font-size: .78rem; color: #eaf2fd; overflow-wrap: anywhere; }
+.experiment-status { border-radius: 999px; padding: 2px 8px; font-size: .64rem; font-weight: 700; white-space: nowrap; }
+.experiment-status.status-preparing, .experiment-status.status-running { color: #cfe4ff; background: #14304f; }
+.experiment-status.status-completed { color: #bbf7d0; background: #14532d; }
+.experiment-status.status-failed { color: #fecaca; background: #7c2d12; }
+.experiment-status.status-cancelled { color: #e2e8f0; background: #334155; }
+.traffic-stats { display: grid; grid-template-columns: repeat(3, max-content); gap: 3px 14px; font-size: .68rem; margin: 0 0 8px; }
+.traffic-stats dt { color: #7f91a7; }
+.traffic-stats dd { margin: 0; color: #e0eaf6; font-weight: 650; }
+.experiment-transitions { list-style: none; margin: 0; padding: 0; max-height: 140px; overflow-y: auto; }
+.experiment-transitions li { padding: 5px 0; border-bottom: 1px solid #1d2b3e; font-size: .69rem; color: #bfccdc; }
+.experiment-transitions time { color: #7f91a7; margin-right: 6px; }
+.experiment-transitions .explanation { margin: 3px 0 0; color: #93c5fd; font-size: .67rem; line-height: 1.4; }
+
+/* --- Phase 2: traffic particles (ViewportPortal children, flow-space) --- */
+.traffic-particle { position: absolute; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; background: #38bdf8; box-shadow: 0 0 6px #38bdf8aa; animation: traffic-flow 700ms ease-out forwards; }
+.traffic-particle.failed { background: #fb7185; box-shadow: 0 0 6px #fb7185aa; }
+@keyframes traffic-flow {
+  from { transform: translate(var(--from-x), var(--from-y)); opacity: 1; }
+  to { transform: translate(var(--to-x), var(--to-y)); opacity: 0; }
+}
 .resource-node { width: 190px; min-height: 70px; border: 1px solid #314258; border-left: 4px solid var(--accent); border-radius: 7px; background: #162238; padding: 8px 10px; box-shadow: 0 3px 10px #02061788; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }.resource-node:hover { border-color: var(--accent); transform: translateY(-1px); }.resource-node.selected { box-shadow: 0 0 0 2px #e2e8f0, 0 4px 12px #02061788; }.resource-topline { display: flex; justify-content: space-between; align-items: center; }.resource-kind { color: #b8c7d9; font-weight: 750; font-size: .62rem; letter-spacing: .08em; text-transform: uppercase; }.resource-name { padding: 5px 0 3px; color: #f1f5f9; font-weight: 650; font-size: .81rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.resource-status { color: #aab9ca; font-size: .69rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.status-dot { width: 7px; height: 7px; border-radius: 50%; }.status-dot.healthy { background: #34d399; }.status-dot.unhealthy { background: #fb7185; }.status-dot.pending { background: #fbbf24; }.react-flow__attribution { display: none; }
 .view-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .view-header-row h1 { margin: 0; }
@@ -197,5 +254,6 @@ dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-s
 .stage-item.error { color: #fca5a5; }
 .stage-icon { width: 14px; text-align: center; flex-shrink: 0; }
 .stage-error { color: #fca5a5; font-size: .72rem; }
-@media (max-width: 1050px) { .explorer-layout { grid-template-columns: minmax(0, 1fr) 310px; }.side-panel { font-size: .95em; }.counters { display: none; }.shell-body { grid-template-columns: 160px minmax(0, 1fr); }.run-actions { grid-template-columns: 1fr; }.generated-file-browser { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { body { overflow: auto; }.shell-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }.sidebar { flex-direction: row; flex-wrap: wrap; }.sidebar-footer { margin-left: auto; }.explorer-layout { display: flex; flex-direction: column; }.canvas { height: 65dvh; min-height: 480px; }.side-panel { max-height: none; border-left: 0; border-top: 1px solid #26354b; }.controls-panel { flex-wrap: wrap; }.controls-panel input { width: 155px; }.install-id { display: none; }.connection strong { display: none; }.project-chip { max-width: 160px; }.view-header-row { flex-wrap: wrap; } }
+@media (max-width: 1300px) { .explorer-layout { grid-template-columns: 210px minmax(0, 1fr) 310px; }.activity-experiments { flex: 1; } }
+@media (max-width: 1050px) { .explorer-layout { grid-template-columns: 190px minmax(0, 1fr) 310px; }.side-panel { font-size: .95em; }.counters { display: none; }.shell-body { grid-template-columns: 160px minmax(0, 1fr); }.run-actions { grid-template-columns: 1fr; }.generated-file-browser { grid-template-columns: 1fr; }.activity-strip { flex-direction: column; max-height: none; }.activity-experiments { border-right: 0; border-bottom: 1px solid #26354b; } }
+@media (max-width: 760px) { body { overflow: auto; }.shell-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }.sidebar { flex-direction: row; flex-wrap: wrap; }.sidebar-footer { margin-left: auto; }.explorer-layout { display: flex; flex-direction: column; }.canvas { height: 65dvh; min-height: 480px; }.lab-panel { max-height: 260px; border-right: 0; border-bottom: 1px solid #26354b; }.side-panel { max-height: none; border-left: 0; border-top: 1px solid #26354b; }.controls-panel { flex-wrap: wrap; }.controls-panel input { width: 155px; }.install-id { display: none; }.connection strong { display: none; }.project-chip { max-width: 160px; }.view-header-row { flex-wrap: wrap; } }

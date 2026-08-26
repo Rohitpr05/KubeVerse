@@ -115,6 +115,52 @@ test('reconcileNodes gives a genuinely new node a position without moving any ex
   assert.ok(added, 'the new resource must produce a new node');
 });
 
+// Regression test: reconcileNodes previously placed a brand-new node using a
+// *fresh* full-graph layout pass, which has no idea where already-on-screen
+// (frozen) nodes currently sit - so the new node's fresh-layout position
+// could land exactly on top of a frozen one. Reproduced live via the Lab's
+// "Fail Pod" experiment (a real replacement Pod, inserted into an otherwise
+// untouched topology) - fixed by resolveOverlaps() in layout.ts.
+test('reconcileNodes never lets a newly-inserted node overlap an existing frozen node, even inside an owns-tree', () => {
+  const deployment: ClusterResource = { uid: 'dep-1', kind: 'Deployment', name: 'echo-api', namespace: 'ns', status: '1/2 Ready', labels: {}, annotations: {}, conditions: [], references: [] };
+  const replicaSet: ClusterResource = { uid: 'rs-1', kind: 'ReplicaSet', name: 'echo-api-abc', namespace: 'ns', status: '1/2 Ready', labels: {}, annotations: {}, conditions: [], references: [], owner: { uid: 'dep-1', kind: 'Deployment', name: 'echo-api' } };
+  const podOne = pod({ uid: 'pod-1', name: 'echo-api-abc-1', status: 'Running (Ready)', owner: { uid: 'rs-1', kind: 'ReplicaSet', name: 'echo-api-abc' } });
+
+  const graphWithOnePod: ResourceGraph = {
+    generatedAt: '', nodes: [deployment, replicaSet, podOne].map((resource) => ({ id: resource.uid, resourceUid: resource.uid, kind: resource.kind, label: resource.name, status: resource.status, namespace: resource.namespace })),
+    edges: [
+      { id: 'e1', source: 'dep-1', target: 'rs-1', relation: 'owns' },
+      { id: 'e2', source: 'rs-1', target: 'pod-1', relation: 'owns' },
+    ],
+  };
+  const onScreen = layoutAllNodes([deployment, replicaSet, podOne], graphWithOnePod);
+  // Simulate the frozen state right after the deployment centered itself
+  // over its single child, as computeLayout's tree-centering naturally does.
+  const podOnePosition = onScreen.find((node) => node.id === 'pod-1')!.position;
+  const deploymentPosition = onScreen.find((node) => node.id === 'dep-1')!.position;
+
+  const podTwo = pod({ uid: 'pod-2', name: 'echo-api-abc-2', status: 'Pending', owner: { uid: 'rs-1', kind: 'ReplicaSet', name: 'echo-api-abc' } });
+  const graphWithTwoPods: ResourceGraph = {
+    generatedAt: '', nodes: [deployment, replicaSet, podOne, podTwo].map((resource) => ({ id: resource.uid, resourceUid: resource.uid, kind: resource.kind, label: resource.name, status: resource.status, namespace: resource.namespace })),
+    edges: [
+      { id: 'e1', source: 'dep-1', target: 'rs-1', relation: 'owns' },
+      { id: 'e2', source: 'rs-1', target: 'pod-1', relation: 'owns' },
+      { id: 'e3', source: 'rs-1', target: 'pod-2', relation: 'owns' },
+    ],
+  };
+  const reconciled = reconcileNodes(onScreen, [deployment, replicaSet, podOne, podTwo], graphWithTwoPods);
+
+  const finalPodOne = reconciled.find((node) => node.id === 'pod-1')!;
+  const finalDeployment = reconciled.find((node) => node.id === 'dep-1')!;
+  assert.deepEqual(finalPodOne.position, podOnePosition, 'the existing Pod must not move');
+  assert.deepEqual(finalDeployment.position, deploymentPosition, 'the existing Deployment must not move');
+
+  const finalPodTwo = reconciled.find((node) => node.id === 'pod-2')!;
+  const overlapsX = Math.abs(finalPodTwo.position.x - finalPodOne.position.x) < 190;
+  const overlapsY = Math.abs(finalPodTwo.position.y - finalPodOne.position.y) < 70;
+  assert.ok(!(overlapsX && overlapsY), `newly-inserted pod-2 at (${finalPodTwo.position.x},${finalPodTwo.position.y}) must not overlap frozen pod-1 at (${finalPodOne.position.x},${finalPodOne.position.y})`);
+});
+
 test('reconcileNodes drops a node whose resource no longer exists in the graph', () => {
   const resource = pod({});
   const onScreen = layoutAllNodes([resource], graphFor([resource]));

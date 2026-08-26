@@ -144,7 +144,7 @@ export function computeLayout(graph: ResourceGraph): Map<string, Point> {
     fallbackRow += 1;
   }
 
-  resolveColumnOverlaps(positions);
+  resolveOverlaps(positions);
   return positions;
 }
 
@@ -152,11 +152,22 @@ export function computeLayout(graph: ResourceGraph): Map<string, Point> {
 // nodes sharing a column ever end up within MIN_COLUMN_GAP of each other,
 // regardless of how their Y was originally derived (tree centering vs
 // anchor-to-root). Only ever pushes a node further down from where it
-// already was - it never moves a column's first (topmost) node and never
-// touches X - so it can't undo the left-to-right hierarchy or namespace
-// grouping above, only spread out a column's own rows when two of its
-// entries would otherwise collide.
-function resolveColumnOverlaps(positions: Map<string, Point>): void {
+// already was - it never touches X - so it can't undo the left-to-right
+// hierarchy or namespace grouping above, only spread out a column's own rows
+// when two of its entries would otherwise collide.
+//
+// `fixed`, when given, marks node ids whose position must never be changed -
+// used by graph.ts's reconcileNodes, which freezes every already-on-screen
+// node's position (Task 2: live updates must never move existing nodes) and
+// only asks this function to find non-colliding spots for the *new* nodes a
+// fresh computeLayout() pass proposed. Without this, a brand-new node
+// inserted next to nodes that stayed frozen from an earlier layout could
+// land exactly on top of one of them, since a fresh layout pass has no idea
+// where the frozen nodes currently sit on screen. A column's fixed nodes are
+// never moved to make room; only unfixed nodes are ever pushed down past
+// them, which keeps the invariant that a set of already-resolved positions
+// stays collision-free after inserting more nodes.
+export function resolveOverlaps(positions: Map<string, Point>, fixed?: Set<string>): void {
   const byColumn = new Map<number, string[]>();
   for (const [id, point] of positions) {
     if (!byColumn.has(point.x)) byColumn.set(point.x, []);
@@ -168,7 +179,7 @@ function resolveColumnOverlaps(positions: Map<string, Point>): void {
       const previous = positions.get(ids[i - 1])!;
       const current = positions.get(ids[i])!;
       const minY = previous.y + MIN_COLUMN_GAP;
-      if (current.y < minY) positions.set(ids[i], { x: current.x, y: minY });
+      if (current.y < minY && !fixed?.has(ids[i])) positions.set(ids[i], { x: current.x, y: minY });
     }
   }
 }

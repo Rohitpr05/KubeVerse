@@ -39,6 +39,15 @@ type TerminalStatus = 'completed' | 'failed' | 'cancelled';
 interface TrackedRuntime {
   experiment: LabExperiment;
   trackedUids: Set<string>;
+  // The Pod uids that were ALREADY Ready under this experiment's root
+  // (topmost owner - the Deployment, for pod-failure/restart/scale alike)
+  // at the moment the experiment started. Required because "the Deployment
+  // reports ready === desired === current" on its own is not sufficient
+  // evidence of convergence: a rolling restart's very first status update
+  // can carry that exact same reading, still describing the pre-restart Pod
+  // that hasn't been touched yet. Convergence instead requires seeing at
+  // least one Ready Pod uid that WASN'T already in this set.
+  readyAtStart: Set<string>;
   timeoutHandle?: NodeJS.Timeout;
 }
 
@@ -77,7 +86,9 @@ export class ExperimentTracker {
     list.unshift(experiment);
     this.byProject.set(projectId, list.slice(0, MAX_EXPERIMENTS_PER_PROJECT));
 
-    const runtime: TrackedRuntime = { experiment, trackedUids: this.ownerChain(target) };
+    const trackedUids = this.ownerChain(target);
+    const rootUid = [...trackedUids].at(-1) ?? target.uid;
+    const runtime: TrackedRuntime = { experiment, trackedUids, readyAtStart: this.readyPodUidsUnder(projectId, rootUid) };
     // unref(): a pending experiment-timeout must never be the thing keeping
     // the backend process (or a test run) alive - it's purely a bound on how
     // long this class keeps tracking, not application-critical work.
@@ -126,6 +137,25 @@ export class ExperimentTracker {
     return uids;
   }
 
+  // Every currently-Ready Pod whose owner chain reaches `rootUid` (walking
+  // Pod -> ReplicaSet -> Deployment via `.owner`, the reverse direction of
+  // ownerChain above) - used both to snapshot the "already Ready before this
+  // experiment" baseline and to check convergence against it.
+  private readyPodUidsUnder(projectId: string, rootUid: string): Set<string> {
+    const resources = this.state.projectResources(projectId);
+    const byUid = new Map(resources.map((resource) => [resource.uid, resource]));
+    const ready = new Set<string>();
+    for (const resource of resources) {
+      if (resource.kind !== 'Pod' || !resource.status.includes('(Ready)')) continue;
+      let current: ClusterResource | undefined = resource;
+      while (current) {
+        if (current.uid === rootUid) { ready.add(resource.uid); break; }
+        current = current.owner ? byUid.get(current.owner.uid) : undefined;
+      }
+    }
+    return ready;
+  }
+
   private onClusterUpdate(update: ClusterUpdate, resource?: ClusterResource, event?: TimelineEvent): void {
     for (const runtime of this.runtime.values()) {
       if (runtime.experiment.kind === 'traffic') continue;
@@ -165,7 +195,17 @@ export class ExperimentTracker {
 
     if (!deleted && resource.kind === 'Deployment' && resource.replicas) {
       const { desired, current, ready } = resource.replicas;
-      if (desired > 0 && desired === current && desired === ready) this.finish(runtime.experiment.id, 'completed');
+      if (desired !== current || desired !== ready) return;
+      if (desired === 0) { this.finish(runtime.experiment.id, 'completed'); return; }
+      // A matching count alone isn't sufficient evidence: it can also be a
+      // stale/unrelated status update still describing the Pod(s) that were
+      // already Ready before this experiment even started (this is exactly
+      // what a rolling restart's very first Deployment update looks like -
+      // see the readyAtStart field comment). Convergence requires seeing at
+      // least one Ready Pod that's genuinely new.
+      const rootUid = [...runtime.trackedUids].at(-1) ?? resource.uid;
+      const nowReady = this.readyPodUidsUnder(runtime.experiment.projectId, rootUid);
+      if ([...nowReady].some((uid) => !runtime.readyAtStart.has(uid))) this.finish(runtime.experiment.id, 'completed');
     }
   }
 
