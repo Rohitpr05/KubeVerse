@@ -14,6 +14,7 @@ button, input, select { font: inherit; }
 .install-id { color: #8192a8; font-size: .72rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .connection { display: flex; align-items: center; gap: 7px; color: #c5d3e4; font-size: .78rem; white-space: nowrap; }.connection strong { color: #f1f5f9; font-weight: 650; }.online-dot, .offline-dot { width: 8px; height: 8px; border-radius: 50%; }.online-dot { background: #34d399; box-shadow: 0 0 0 3px #34d39922; }.offline-dot { background: #f97316; }
 .observer-warning { z-index: 30; background: #7c2d12; color: #ffedd5; padding: 6px 18px; font-size: .78rem; }
+.observer-warning.updating { background: #14304f; color: #cfe4ff; }
 .shell-body { min-height: 0; display: grid; grid-template-columns: 190px minmax(0, 1fr); }
 .sidebar { min-height: 0; display: flex; flex-direction: column; justify-content: space-between; background: #0f172a; border-right: 1px solid #26354b; padding: 14px 10px; }
 .sidebar-heading { margin: 4px 8px 8px; color: #6c7d94; font-size: .66rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
@@ -133,12 +134,68 @@ button, input, select { font: inherit; }
 .popover-panel label { font-size: .7rem; color: #c5d3e4; display: flex; align-items: center; gap: 5px; }
 .kind-filters { display: contents; }
 .explorer-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; }
-.canvas { isolation: isolate; min-width: 0; min-height: 0; height: 100%; background: #0c1525; }.react-flow { height: 100%; width: 100%; }.react-flow__controls { box-shadow: 0 2px 8px #02061799; }.react-flow__controls button { background: #162238; border-color: #33465f; color: #cbd5e1; }.react-flow__minimap { background: #111c30; border: 1px solid #33465f; }.react-flow__edge-text { fill: #cbd5e1; font-size: 10px; }
+.canvas { isolation: isolate; min-width: 0; min-height: 0; height: 100%; background: #0c1525; }.react-flow { height: 100%; width: 100%; }.react-flow__controls { box-shadow: 0 2px 8px #02061799; }.react-flow__controls button { background: #162238; border-color: #33465f; color: #cbd5e1; }.react-flow__edge-text { fill: #cbd5e1; font-size: 10px; }
+/* MiniMap (Task 6): the dark Playground background must read through it, not
+   a solid grey block, so the outer background is a translucent wash rather
+   than an opaque fill - border stays solid so the widget still reads as a
+   distinct control. Everything else is set as CSS custom properties (not
+   direct color values) because @xyflow/react's own MiniMap SVG reads these
+   exact variable names on its child nodes/mask (see base.css /
+   MiniMapComponent) - setting them here on the parent selector lets them
+   cascade down without touching the <MiniMap> component's props. */
+.react-flow__minimap {
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid #33465f;
+  /* Topology nodes inside the minimap: muted, but with enough stroke
+     contrast to still read as shapes against the translucent background. */
+  --xy-minimap-node-background-color: rgba(148, 163, 184, 0.55);
+  --xy-minimap-node-stroke-color: rgba(203, 213, 225, 0.4);
+  /* The mask is one SVG path covering everything OUTSIDE the viewport
+     rectangle (a fill "donut" around the unmasked viewport hole) - keeping
+     its fill faint is what lets the muted topology still show through
+     outside the viewport, while a bold accent stroke (applied to both the
+     mask's outer and inner/viewport boundary) is what actually makes the
+     current viewport rectangle read as "clearly visible, full-strength" per
+     Task 6, since the hole itself has no fill to contrast against. */
+  --xy-minimap-mask-background-color: rgba(15, 23, 42, 0.25);
+  --xy-minimap-mask-stroke-color: #4c7bd1;
+  --xy-minimap-mask-stroke-width: 2;
+}
 .canvas-actions { display: flex; gap: 6px; }.canvas-actions button { border: 1px solid #3b4c63; border-radius: 5px; background: #162238; color: #dbe7f5; cursor: pointer; padding: 5px 8px; font-size: .72rem; }.canvas-actions button:hover { background: #22334d; }
 .side-panel { min-width: 0; min-height: 0; overflow-y: auto; border-left: 1px solid #26354b; background: #0f172a; }.inspector { padding: 17px; border-bottom: 1px solid #26354b; }.inspector.empty { color: #9eafc3; line-height: 1.45; min-height: 180px; }.inspector.empty h2 { color: #e2e8f0; }.inspector h2 { overflow-wrap: anywhere; margin: 0 0 6px; font-size: 1rem; }.kind-badge { display: inline-block; margin: 0 0 15px; padding: 3px 7px; border-radius: 999px; color: #bcd4f6; background: #1e3a5f; font-size: .67rem; font-weight: 700; }
 .inspector h3, .yaml-details summary { margin: 19px 0 7px; color: #b9c7d8; font-size: .76rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }.yaml-details summary { cursor: pointer; }.yaml-details[open] summary { margin-bottom: 8px; }
 dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-size: .78rem; margin: 0; } dt { color: #8495aa; } dd { margin: 0; overflow-wrap: anywhere; color: #e0eaf6; }.inspector ul { list-style: none; padding: 0; margin: 0; font-size: .72rem; }.inspector li { padding: 5px 0; border-bottom: 1px solid #1d2b3e; overflow-wrap: anywhere; }.inspector code { color: #93c5fd; }.muted { color: #8798ac; font-size: .78rem; }.yaml, .logs { max-height: 300px; margin: 0; overflow: auto; border: 1px solid #283950; border-radius: 5px; padding: 9px; background: #09111e; color: #bfdbfe; font: .68rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }.logs { color: #c7d2fe; }.error { color: #fca5a5; font-size: .75rem; }
 .timeline { padding: 16px; }.timeline h2 { margin: 0 0 10px; color: #dce8f6; font-size: .86rem; }.timeline ol { list-style: none; padding: 0; margin: 0; }.timeline li { display: grid; grid-template-columns: 62px 80px minmax(0, 1fr); gap: 6px; padding: 7px 0; border-bottom: 1px solid #1d2b3e; color: #bfccdc; font-size: .69rem; overflow-wrap: anywhere; }.timeline time { color: #7f91a7; }.event-source { border-radius: 3px; padding: 1px 4px; width: max-content; height: max-content; font-size: .61rem; font-weight: 700; }.event-source.kubernetes_event { color: #bae6fd; background: #0c4a6e; }.event-source.resource_change { color: #ddd6fe; background: #4c1d95; }
 .resource-node { width: 190px; min-height: 70px; border: 1px solid #314258; border-left: 4px solid var(--accent); border-radius: 7px; background: #162238; padding: 8px 10px; box-shadow: 0 3px 10px #02061788; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }.resource-node:hover { border-color: var(--accent); transform: translateY(-1px); }.resource-node.selected { box-shadow: 0 0 0 2px #e2e8f0, 0 4px 12px #02061788; }.resource-topline { display: flex; justify-content: space-between; align-items: center; }.resource-kind { color: #b8c7d9; font-weight: 750; font-size: .62rem; letter-spacing: .08em; text-transform: uppercase; }.resource-name { padding: 5px 0 3px; color: #f1f5f9; font-weight: 650; font-size: .81rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.resource-status { color: #aab9ca; font-size: .69rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.status-dot { width: 7px; height: 7px; border-radius: 50%; }.status-dot.healthy { background: #34d399; }.status-dot.unhealthy { background: #fb7185; }.status-dot.pending { background: #fbbf24; }.react-flow__attribution { display: none; }
+.view-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.view-header-row h1 { margin: 0; }
+/* Portaled to document.body (NewProjectModal.tsx) for the same reason
+   PopoverDropdown's panel is - it must never depend on an ancestor's
+   overflow/stacking behavior. z-index here only has to beat ordinary page
+   content, since it's outside every contained stacking context already. */
+.modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: #020617cc; padding: 16px; }
+.modal-card { width: 100%; max-width: 380px; border: 1px solid #33465f; border-radius: 10px; background: #101a2c; padding: 20px; box-shadow: 0 20px 50px #020617cc; }
+.modal-card h2 { margin: 0 0 14px; font-size: 1rem; }
+.modal-card label { display: block; margin-bottom: 8px; font-size: .78rem; color: #9eafc3; }
+.modal-card input { width: 100%; margin-top: 4px; border: 1px solid #33465f; border-radius: 5px; background: #0b1322; color: #e2e8f0; padding: 7px 9px; font-size: .82rem; }
+.modal-actions { justify-content: flex-end; margin-top: 14px; }
+.project-dashboard-name { margin: 0 0 10px; font-size: 1.05rem; font-weight: 650; color: #eaf2fd; }
+.project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.project-card { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border: 1px solid #26354b; border-radius: 8px; background: #0b1322; padding: 14px; }
+.project-card.active { border-color: #4c7bd1; }
+.project-card strong { color: #eaf2fd; font-size: .88rem; overflow-wrap: anywhere; }
+.project-card button { margin-top: 4px; }
+.generation-progress { margin-top: 12px; padding: 14px; border: 1px solid #26354b; border-radius: 8px; background: #0b1322; }
+.generation-progress-title { margin: 0 0 10px; font-size: .82rem; font-weight: 650; color: #dce8f6; }
+.progress-bar { height: 6px; border-radius: 999px; background: #1d2b3e; overflow: hidden; margin-bottom: 12px; }
+.progress-bar-fill { height: 100%; background: #4c7bd1; transition: width .25s ease; }
+.progress-bar-fill.error { background: #ef4444; }
+.stage-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.stage-item { display: flex; align-items: baseline; gap: 8px; font-size: .78rem; color: #6c7d94; }
+.stage-item.done { color: #93e6b8; }
+.stage-item.active { color: #dce8f6; }
+.stage-item.error { color: #fca5a5; }
+.stage-icon { width: 14px; text-align: center; flex-shrink: 0; }
+.stage-error { color: #fca5a5; font-size: .72rem; }
 @media (max-width: 1050px) { .explorer-layout { grid-template-columns: minmax(0, 1fr) 310px; }.side-panel { font-size: .95em; }.counters { display: none; }.shell-body { grid-template-columns: 160px minmax(0, 1fr); }.run-actions { grid-template-columns: 1fr; }.generated-file-browser { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { body { overflow: auto; }.shell-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }.sidebar { flex-direction: row; flex-wrap: wrap; }.sidebar-footer { margin-left: auto; }.explorer-layout { display: flex; flex-direction: column; }.canvas { height: 65dvh; min-height: 480px; }.side-panel { max-height: none; border-left: 0; border-top: 1px solid #26354b; }.controls-panel { flex-wrap: wrap; }.controls-panel input { width: 155px; }.install-id { display: none; }.connection strong { display: none; }.project-chip { max-width: 160px; } }
+@media (max-width: 760px) { body { overflow: auto; }.shell-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }.sidebar { flex-direction: row; flex-wrap: wrap; }.sidebar-footer { margin-left: auto; }.explorer-layout { display: flex; flex-direction: column; }.canvas { height: 65dvh; min-height: 480px; }.side-panel { max-height: none; border-left: 0; border-top: 1px solid #26354b; }.controls-panel { flex-wrap: wrap; }.controls-panel input { width: 155px; }.install-id { display: none; }.connection strong { display: none; }.project-chip { max-width: 160px; }.view-header-row { flex-wrap: wrap; } }

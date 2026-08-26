@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { getProjectById, listProjectsWithArchitecture, openOrCreateProject, readArchitectureSource, readGeneratedState } from '../workspace.js';
+import { createProject, getProjectById, listProjectsWithArchitecture, openOrCreateProject, readArchitectureSource, readGeneratedState } from '../workspace.js';
 
 interface OpenProjectBody {
   path?: string;
@@ -20,13 +20,21 @@ function resolveProjectOr404(id: string, reply: { code: (status: number) => { se
 export function registerProjectRoutes(app: FastifyInstance): void {
   app.get('/api/projects', async () => ({ projects: listProjectsWithArchitecture() }));
 
+  // Two ways to create/open a project:
+  //  - { name } alone (no path) - the primary flow: KubeVerse picks the
+  //    location automatically under its dedicated local projects workspace
+  //    (local/paths.ts's projectsRoot(), never inside KubeVerse's own source
+  //    tree). This is what "+ New Project" uses.
+  //  - { path, name? } - the secondary "open an existing project directory"
+  //    flow, unchanged from before.
   app.post('/api/projects', async (request, reply) => {
     const body = request.body as OpenProjectBody;
-    if (!body.path || !body.path.trim()) return reply.code(400).send({ error: 'path is required' });
     try {
-      return openOrCreateProject(body.path, body.name);
+      if (body.path && body.path.trim()) return openOrCreateProject(body.path, body.name);
+      if (body.name && body.name.trim()) return createProject(body.name);
+      return reply.code(400).send({ error: 'name or path is required' });
     } catch (error) {
-      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Failed to open project directory.' });
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'Failed to create or open the project.' });
     }
   });
 

@@ -56,7 +56,7 @@ export function App() {
         <Sidebar active={view} onSelect={setView} />
         <div className="shell-content">
           {view === 'playground' && <PlaygroundView currentProject={currentProject} navigate={setView} />}
-          {view === 'ai-builder' && <AIBuilderView currentProject={currentProject} navigate={setView} />}
+          {view === 'ai-builder' && <AIBuilderView currentProject={currentProject} navigate={setView} onProjectCreated={setCurrentProject} />}
           {view === 'architectures' && <ArchitecturesView currentProject={currentProject} onOpenProject={setCurrentProject} navigate={setView} />}
           {view === 'projects' && <ProjectsView currentProject={currentProject} onOpenProject={setCurrentProject} navigate={setView} restored={restoredProject} />}
           {view === 'settings' && <SettingsView />}

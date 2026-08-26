@@ -2,6 +2,7 @@
 // environment, projects, architecture). The observer routes used by
 // PlaygroundView stay as plain inline fetches - they predate this module and
 // don't need it.
+import type { ClusterResource, LabExperiment } from '@kubeverse/shared';
 
 export interface Identity {
   installationId: string;
@@ -33,6 +34,7 @@ export interface ArchitectureStatus {
   serviceCount?: number;
   lastCompiledAt?: string;
   lastGeneratedAt?: string;
+  lastDeployedAt?: string;
   generatedFileCount?: number;
 }
 
@@ -84,6 +86,7 @@ export interface ProjectDetail extends ProjectSummary {
   generatedState: {
     lastCompiledAt?: string;
     lastGeneratedAt?: string;
+    lastDeployedAt?: string;
     spec?: ArchitectureSpecView;
     files?: GeneratedFileRecord[];
   };
@@ -118,6 +121,13 @@ export const api = {
   getEnvironment: () => fetch('/api/environment').then((response) => asJson<EnvironmentStatus>(response)),
 
   listProjects: () => fetch('/api/projects').then((response) => asJson<{ projects: ProjectListEntry[] }>(response)),
+  // Primary creation path: KubeVerse picks the location automatically under
+  // its dedicated local projects workspace (never inside the app's own
+  // source tree) - the user only ever supplies a name.
+  createProject: (name: string) =>
+    fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).then((response) => asJson<ProjectSummary>(response)),
+  // Secondary path: open (or create) a project at an explicit directory the
+  // user chooses themselves.
   openProject: (path: string, name?: string) =>
     fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path, name }) }).then((response) => asJson<ProjectSummary>(response)),
   getProject: (id: string) => fetch(`/api/projects/${id}`).then((response) => asJson<ProjectDetail>(response)),

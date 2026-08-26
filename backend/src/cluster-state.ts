@@ -59,6 +59,17 @@ function resourceStatus(kind: ClusterKind, raw: KubernetesObject): string {
   }
 }
 
+function replicaCounts(kind: ClusterKind, raw: KubernetesObject): ClusterResource['replicas'] {
+  if (!['Deployment', 'ReplicaSet', 'StatefulSet', 'DaemonSet'].includes(kind)) return undefined;
+  if (kind === 'DaemonSet') return { desired: raw.status?.desiredNumberScheduled ?? 0, current: raw.status?.currentNumberScheduled ?? 0, ready: raw.status?.numberReady ?? 0 };
+  return { desired: raw.spec?.replicas ?? 0, current: raw.status?.replicas ?? 0, ready: raw.status?.readyReplicas ?? 0 };
+}
+
+function servicePorts(kind: ClusterKind, raw: KubernetesObject): ClusterResource['servicePorts'] {
+  if (kind !== 'Service') return undefined;
+  return (raw.spec?.ports ?? []).map((port: any) => ({ name: port.name, port: port.port, targetPort: typeof port.targetPort === 'number' ? port.targetPort : port.port }));
+}
+
 function containers(raw: KubernetesObject): ClusterResource['containers'] {
   const statuses = new Map((raw.status?.containerStatuses ?? []).map((status: any) => [status.name, status]));
   return (raw.spec?.containers ?? []).map((container: any) => {
@@ -105,7 +116,9 @@ export function normalizeResource(kind: ClusterKind, raw: KubernetesObject): Clu
     creationTimestamp: toTimestamp(metadata.creationTimestamp), nodeName: raw.spec?.nodeName,
     conditions: conditions(raw), containers: kind === 'Pod' ? containers(raw) : undefined,
     selector: raw.spec?.selector?.matchLabels ?? raw.spec?.selector,
-    references: resourceReferences(kind, raw)
+    references: resourceReferences(kind, raw),
+    replicas: replicaCounts(kind, raw),
+    servicePorts: servicePorts(kind, raw)
   };
 }
 
@@ -126,6 +139,13 @@ export class ClusterState {
   private readonly history = new Map<string, ResourceHistoryEntry[]>();
   private readonly errors = new Set<string>();
   private readonly graphBuilder = new ResourceGraphBuilder();
+  // Additional fan-out for the same update stream the constructor's
+  // `onUpdate` callback receives (server.ts's SSE broadcast) - lets the Lab
+  // experiment tracker (backend/src/lab/experiments.ts) observe the exact
+  // same real Kubernetes transitions without ClusterState knowing anything
+  // about experiments, and without a second state model: it's the same
+  // events, just also delivered to a second listener.
+  private readonly subscribers = new Set<(update: ClusterUpdate, resource?: ClusterResource, event?: TimelineEvent) => void>();
 
   constructor(
     // `resource`/`event` (when present) is the object the update is *about* -
@@ -144,7 +164,7 @@ export class ClusterState {
     const visible = objects.filter((object) => this.visible(kind, object));
     for (const [uid, record] of this.records) if (record.resource.kind === kind) this.delete(uid, false);
     for (const object of visible) this.upsert(kind, 'SYNC', object, false);
-    this.onUpdate({ action: 'SYNC', kind, timestamp: new Date().toISOString() });
+    this.emit({ action: 'SYNC', kind, timestamp: new Date().toISOString() });
   }
 
   apply(kind: Exclude<ClusterKind, 'Container'>, action: ResourceAction, raw: KubernetesObject): void {
@@ -160,7 +180,7 @@ export class ClusterState {
   replaceEvents(objects: KubernetesObject[]): void {
     this.events.clear();
     for (const object of objects.filter((item) => this.visible('Event', item))) this.events.set(uidFor(object), normalizeEvent(object));
-    this.onUpdate({ action: 'SYNC', kind: 'Event', timestamp: new Date().toISOString() });
+    this.emit({ action: 'SYNC', kind: 'Event', timestamp: new Date().toISOString() });
   }
 
   applyEvent(action: ResourceAction, raw: KubernetesObject): void {
@@ -170,7 +190,7 @@ export class ClusterState {
     if (action === 'DELETED') this.events.delete(uid);
     else this.events.set(uid, normalizeEvent(raw));
     const event = action === 'DELETED' ? previous : this.events.get(uid);
-    this.onUpdate({ action, kind: 'Event', timestamp: new Date().toISOString(), event }, undefined, event);
+    this.emit({ action, kind: 'Event', timestamp: new Date().toISOString(), event }, undefined, event);
   }
 
   recordError(message: string): void { this.errors.add(message); }
@@ -250,6 +270,30 @@ export class ClusterState {
     return [...this.records.values()].map((record) => record.resource).filter((resource) => this.isResourceOwnedByProject(resource, projectId));
   }
 
+  // Narrow, read-only lookups used by the Lab experiment tracker
+  // (backend/src/lab/experiments.ts) to resolve a mutation's target resource
+  // and to walk its owner chain (Pod -> ReplicaSet -> Deployment) once at
+  // experiment start - never a second copy of cluster state, just reads
+  // against the same records this class already holds.
+  resourceByUid(uid: string): ClusterResource | undefined { return this.records.get(uid)?.resource; }
+  resourceByKey(kind: string, namespace: string | undefined, name: string): ClusterResource | undefined {
+    const uid = this.resourceKeys.get(this.key(kind, namespace, name));
+    return uid ? this.records.get(uid)?.resource : undefined;
+  }
+
+  // Additional listener for the same update stream server.ts's SSE broadcast
+  // already receives via the constructor's `onUpdate` - see the `subscribers`
+  // field comment above. Returns an unsubscribe function.
+  subscribe(listener: (update: ClusterUpdate, resource?: ClusterResource, event?: TimelineEvent) => void): () => void {
+    this.subscribers.add(listener);
+    return () => this.subscribers.delete(listener);
+  }
+
+  private emit(update: ClusterUpdate, resource?: ClusterResource, event?: TimelineEvent): void {
+    this.onUpdate(update, resource, event);
+    for (const listener of this.subscribers) listener(update, resource, event);
+  }
+
   projectSnapshot(projectId: string): ClusterSnapshot {
     const resources = this.projectResources(projectId);
     const events = [...this.events.values()]
@@ -275,7 +319,7 @@ export class ClusterState {
     this.records.set(resource.uid, { resource, raw });
     this.resourceKeys.set(this.key(resource.kind, resource.namespace, resource.name), resource.uid);
     this.addHistory(resource, action);
-    if (emit) this.onUpdate({ action, kind, timestamp: new Date().toISOString(), resource }, resource);
+    if (emit) this.emit({ action, kind, timestamp: new Date().toISOString(), resource }, resource);
   }
 
   private delete(uid: string, emit: boolean, kind?: Exclude<ClusterKind, 'Container'>): void {
@@ -284,7 +328,7 @@ export class ClusterState {
     this.records.delete(uid);
     this.resourceKeys.delete(this.key(record.resource.kind, record.resource.namespace, record.resource.name));
     this.addHistory(record.resource, 'DELETED');
-    if (emit) this.onUpdate({ action: 'DELETED', kind: kind ?? record.resource.kind, timestamp: new Date().toISOString(), removedUid: uid }, record.resource);
+    if (emit) this.emit({ action: 'DELETED', kind: kind ?? record.resource.kind, timestamp: new Date().toISOString(), removedUid: uid }, record.resource);
   }
 
   private addHistory(resource: ClusterResource, action: ResourceAction): void {

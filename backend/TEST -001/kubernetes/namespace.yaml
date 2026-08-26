@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: kubeverse-my-application
-  labels:
-    app.kubernetes.io/managed-by: kubeverse
-    kubeverse.dev/project-id: 01a037bf-5bff-7285-a0d0-0d8e79272479
-    kubeverse.dev/project-name: TEST-001

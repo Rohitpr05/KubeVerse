@@ -3,6 +3,8 @@ import { api, type ArchitectureSpecView, type EnvironmentStatus, type ExecutionR
 import type { ViewId } from '../shell/Sidebar';
 import { ArchitecturePreview } from '../components/ArchitecturePreview';
 import { GeneratedFileTree } from '../components/GeneratedFileTree';
+import { GenerationProgress, type Stage } from '../components/GenerationProgress';
+import { NewProjectModal } from '../components/NewProjectModal';
 
 const EXAMPLE = `# E-commerce demo
 
@@ -21,27 +23,69 @@ Database:
 Frontend calls API.
 API calls MongoDB.`;
 
+const COMPILE_STAGE_DEFS: { key: string; label: string }[] = [
+  { key: 'reading', label: 'Reading architecture' },
+  { key: 'sending', label: 'Sending architecture to AI' },
+  { key: 'ai', label: 'Generating architecture' },
+  { key: 'validating', label: 'Validating architecture' },
+];
+
+const GENERATE_STAGE_DEFS: { key: string; label: string }[] = [
+  { key: 'services', label: 'Generating services' },
+  { key: 'docker', label: 'Generating Docker configuration' },
+  { key: 'kubernetes', label: 'Generating Kubernetes manifests' },
+];
+
+function freshStages(defs: { key: string; label: string }[]): Stage[] {
+  return defs.map((def) => ({ ...def, status: 'pending' }));
+}
+
 function ChecklistItem({ done, label }: { done: boolean; label: string }) {
   return <li className={done ? 'checklist-item done' : 'checklist-item'}>{done ? '✓' : '—'} {label}</li>;
 }
 
-export function AIBuilderView({ currentProject, navigate }: { currentProject: ProjectSummary | undefined; navigate: (view: ViewId) => void }) {
+export function AIBuilderView({ currentProject, navigate, onProjectCreated }: {
+  currentProject: ProjectSummary | undefined;
+  navigate: (view: ViewId) => void;
+  onProjectCreated: (project: ProjectSummary) => void;
+}) {
   const [source, setSource] = useState('');
   const [compiling, setCompiling] = useState(false);
+  const [compileStages, setCompileStages] = useState<Stage[]>();
   const [compileErrors, setCompileErrors] = useState<string[]>();
   const [compiledSpec, setCompiledSpec] = useState<ArchitectureSpecView>();
   const [generating, setGenerating] = useState(false);
+  const [generateStages, setGenerateStages] = useState<Stage[]>();
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFileRecord[]>();
-  const [generateError, setGenerateError] = useState<string>();
   const [environment, setEnvironment] = useState<EnvironmentStatus>();
   const [dockerRunning, setDockerRunning] = useState(false);
   const [dockerResult, setDockerResult] = useState<ExecutionResult>();
   const [dockerStarted, setDockerStarted] = useState(false);
   const [k8sRunning, setK8sRunning] = useState(false);
   const [k8sResult, setK8sResult] = useState<ExecutionResult>();
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Bumped whenever the active project changes (or a new compile/generate
+  // starts). An in-flight request captures the epoch it was started under;
+  // if the epoch has moved on by the time it resolves - the user switched to
+  // a different project, or started a fresh attempt - its result is
+  // discarded instead of being applied to what's now on screen. Without
+  // this, a slow compile for Project A that resolves after the user has
+  // already switched to Project B could silently overwrite B's view with
+  // A's result.
+  const epochRef = useRef(0);
+
   useEffect(() => {
+    epochRef.current += 1;
+    setCompileStages(undefined);
+    setGenerateStages(undefined);
+    setCompileErrors(undefined);
+    setDockerResult(undefined);
+    setK8sResult(undefined);
+    setDockerStarted(false);
+    setCompiling(false);
+    setGenerating(false);
     if (!currentProject) return;
     void api.getProject(currentProject.id).then((detail) => {
       setSource(detail.architecture);
@@ -53,32 +97,66 @@ export function AIBuilderView({ currentProject, navigate }: { currentProject: Pr
 
   async function compile() {
     if (!currentProject) return;
+    const epoch = ++epochRef.current;
+    const setStage = (key: string, status: Stage['status'], error?: string) => {
+      if (epochRef.current !== epoch) return;
+      setCompileStages((stages) => stages?.map((stage) => (stage.key === key ? { ...stage, status, error } : stage)));
+    };
+
     setCompiling(true);
+    setCompileStages(freshStages(COMPILE_STAGE_DEFS));
     setCompileErrors(undefined);
     setCompiledSpec(undefined);
     setGeneratedFiles(undefined);
+    setGenerateStages(undefined);
+
+    setStage('reading', 'done');
+    setStage('sending', 'done');
+    setStage('ai', 'active');
     try {
       const outcome = await api.compileArchitecture(currentProject.id, source);
-      if (outcome.success) setCompiledSpec(outcome.spec);
-      else setCompileErrors(outcome.errors ?? ['Compilation failed.']);
+      if (epochRef.current !== epoch) return;
+      if (outcome.success) {
+        setStage('ai', 'done');
+        setStage('validating', 'done');
+        setCompiledSpec(outcome.spec);
+      } else {
+        const message = (outcome.errors ?? ['Compilation failed.']).join('; ');
+        setStage('ai', 'error', message);
+        setCompileErrors(outcome.errors ?? ['Compilation failed.']);
+      }
     } catch (error) {
-      setCompileErrors([error instanceof Error ? error.message : 'Compilation failed.']);
+      if (epochRef.current !== epoch) return;
+      const message = error instanceof Error ? error.message : 'Compilation failed.';
+      setStage('ai', 'error', message);
+      setCompileErrors([message]);
     } finally {
-      setCompiling(false);
+      if (epochRef.current === epoch) setCompiling(false);
     }
   }
 
   async function generate() {
     if (!currentProject) return;
+    const epoch = ++epochRef.current;
+    const setStage = (key: string, status: Stage['status'], error?: string) => {
+      if (epochRef.current !== epoch) return;
+      setGenerateStages((stages) => stages?.map((stage) => (stage.key === key ? { ...stage, status, error } : stage)));
+    };
+
     setGenerating(true);
-    setGenerateError(undefined);
+    setGenerateStages(freshStages(GENERATE_STAGE_DEFS));
+    GENERATE_STAGE_DEFS.forEach((def) => setStage(def.key, 'active'));
     try {
       const result = await api.generateProject(currentProject.id);
+      if (epochRef.current !== epoch) return;
+      GENERATE_STAGE_DEFS.forEach((def) => setStage(def.key, 'done'));
       setGeneratedFiles(result.files);
     } catch (error) {
-      setGenerateError(error instanceof Error ? error.message : 'Generation failed.');
+      if (epochRef.current !== epoch) return;
+      const message = error instanceof Error ? error.message : 'Generation failed.';
+      setStage('services', 'error', message);
     } finally {
-      setGenerating(false);
+      if (epochRef.current === epoch) setGenerating(false);
     }
   }
 
@@ -134,15 +212,24 @@ export function AIBuilderView({ currentProject, navigate }: { currentProject: Pr
     reader.readAsText(file);
   }
 
+  function handleProjectCreated(project: ProjectSummary) {
+    setShowNewProjectModal(false);
+    onProjectCreated(project);
+  }
+
   if (!currentProject) {
     return (
       <div className="view">
         <h1>AI Builder</h1>
+        <p className="muted">Build a Kubernetes architecture from a simple architecture description.</p>
         <section className="empty-hero">
-          <h2>Open a project first</h2>
-          <p className="muted">The AI Builder generates files into a local project directory - open or create one to continue.</p>
-          <div className="settings-actions"><button onClick={() => navigate('projects')}>Go to Projects</button></div>
+          <h2>Create a project to start</h2>
+          <div className="settings-actions">
+            <button onClick={() => setShowNewProjectModal(true)}>+ New Project</button>
+            <button onClick={() => navigate('projects')}>Open Existing Project</button>
+          </div>
         </section>
+        {showNewProjectModal && <NewProjectModal onClose={() => setShowNewProjectModal(false)} onCreated={handleProjectCreated} />}
       </div>
     );
   }
@@ -153,8 +240,13 @@ export function AIBuilderView({ currentProject, navigate }: { currentProject: Pr
 
   return (
     <div className="view ai-builder-view">
-      <h1>AI Builder</h1>
-      <p className="muted">Build a Kubernetes architecture from a plain-language description. Project: <strong>{currentProject.name}</strong></p>
+      <div className="view-header-row">
+        <div>
+          <h1>AI Builder</h1>
+          <p className="muted">Project: <strong>{currentProject.name}</strong></p>
+        </div>
+        <button onClick={() => setShowNewProjectModal(true)}>+ New Project</button>
+      </div>
 
       <section className="settings-card">
         <h2>Step 1 — Describe your architecture</h2>
@@ -171,10 +263,12 @@ export function AIBuilderView({ currentProject, navigate }: { currentProject: Pr
           <button onClick={() => fileInputRef.current?.click()}>Upload architecture.md…</button>
           <button onClick={() => void compile()} disabled={compiling || !source.trim()}>{compiling ? 'Compiling…' : 'Compile Architecture'}</button>
         </div>
-        {compileErrors && (
+        {compileStages && <GenerationProgress title="Building architecture" stages={compileStages} />}
+        {compileErrors && !compiling && (
           <div className="validation-errors">
-            <p><strong>Validation errors</strong> — the AI's proposal didn't pass schema validation, so nothing was accepted:</p>
+            <p><strong>✗ Architecture compilation failed</strong> — the AI's proposal didn't pass schema validation, so nothing was accepted:</p>
             <ul>{compileErrors.map((message, index) => <li key={index} className="error">{message}</li>)}</ul>
+            <div className="settings-actions"><button onClick={() => void compile()}>Retry</button></div>
           </div>
         )}
       </section>
@@ -186,7 +280,10 @@ export function AIBuilderView({ currentProject, navigate }: { currentProject: Pr
           <div className="settings-actions">
             <button onClick={() => void generate()} disabled={generating}>{generating ? 'Generating…' : 'Generate Project'}</button>
           </div>
-          {generateError && <p className="error">{generateError}</p>}
+          {generateStages && <GenerationProgress title="Generating project files" stages={generateStages} />}
+          {generateStages?.some((stage) => stage.status === 'error') && !generating && (
+            <div className="settings-actions"><button onClick={() => void generate()}>Retry</button></div>
+          )}
         </section>
       )}
 
@@ -234,6 +331,8 @@ export function AIBuilderView({ currentProject, navigate }: { currentProject: Pr
           </div>
         </section>
       )}
+
+      {showNewProjectModal && <NewProjectModal onClose={() => setShowNewProjectModal(false)} onCreated={handleProjectCreated} />}
     </div>
   );
 }

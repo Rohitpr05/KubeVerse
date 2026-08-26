@@ -12,6 +12,8 @@ import { registerEnvironmentRoutes } from './routes/environment.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerArchitectureRoutes } from './routes/architecture.js';
 import { registerExecutionRoutes } from './routes/execution.js';
+import { registerLabRoutes } from './routes/lab.js';
+import { ExperimentTracker } from './lab/experiments.js';
 
 const port = Number(process.env.PLATFORM_PORT ?? 4000);
 const host = process.env.PLATFORM_HOST ?? '127.0.0.1';
@@ -43,6 +45,7 @@ const state = new ClusterState((update: ClusterUpdate, resource?: ClusterResourc
 }, new Set(namespaceFilter));
 const observer = new KubernetesObserver(state, namespaceFilter);
 const metrics = new UnavailableMetricsProvider();
+const experiments = new ExperimentTracker(state);
 
 await app.register(cors, { origin: true });
 
@@ -52,6 +55,7 @@ registerEnvironmentRoutes(app);
 registerProjectRoutes(app);
 registerArchitectureRoutes(app);
 registerExecutionRoutes(app);
+registerLabRoutes(app, state, experiments);
 
 app.get('/health', async () => ({ status: 'ok', service: 'platform-backend' }));
 app.get('/live', async () => ({ status: 'alive', service: 'platform-backend' }));
@@ -100,8 +104,12 @@ app.get('/events', (request, reply) => {
   response.flushHeaders();
   clients.set(response, projectId);
   sse(response, 'snapshot', projectId ? state.projectSnapshot(projectId) : state.snapshot());
+  // Lab experiment updates (Phase 2) are forwarded on the same per-project
+  // SSE stream, alongside cluster-update - one connection, one project scope,
+  // same client-side filtering discipline as everything else on this stream.
+  const unsubscribeLab = projectId ? experiments.subscribe(projectId, (experiment) => sse(response, 'lab-update', experiment)) : undefined;
   const heartbeat = setInterval(() => response.write(': keepalive\n\n'), 15_000);
-  request.raw.on('close', () => { clearInterval(heartbeat); clients.delete(response); });
+  request.raw.on('close', () => { clearInterval(heartbeat); clients.delete(response); unsubscribeLab?.(); });
 });
 
 try { await observer.start(); }

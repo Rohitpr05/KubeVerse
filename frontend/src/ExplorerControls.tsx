@@ -7,9 +7,10 @@ import { PopoverDropdown } from './components/PopoverDropdown';
 // resources always live in exactly one namespace - the old per-namespace
 // filter had nothing left to do, and would have hidden cluster-scoped Nodes
 // (which have no namespace) if left in place.
-export function ExplorerControls({ search, setSearch, visibleKinds, toggleKind, statistics, onFit, onReset }: {
+export function ExplorerControls({ search, setSearch, visibleKinds, toggleKind, statistics, onFit, onReset, locked, onToggleLock, onAutoLayout }: {
   search: string; setSearch: (value: string) => void;
   visibleKinds: Set<string>; toggleKind: (kind: ClusterKind) => void; statistics?: ClusterStatistics; onFit: () => void; onReset: () => void;
+  locked: boolean; onToggleLock: () => void; onAutoLayout: () => void;
 }) {
   return <section className="controls-panel">
     <label>Search<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="name, kind, namespace" /></label>
@@ -19,6 +20,10 @@ export function ExplorerControls({ search, setSearch, visibleKinds, toggleKind, 
     <div className="toolbar-buttons">
       <button onClick={onFit}>Fit</button>
       <button onClick={onReset}>Reset</button>
+      {/* Auto Layout recalculates positions (layoutAllNodes); Fit above only
+          moves the camera - they must stay two separate actions (Task 4). */}
+      <button onClick={onAutoLayout}>Auto Layout</button>
+      <button onClick={onToggleLock} aria-pressed={locked}>{locked ? '🔒 Layout Locked' : '🔓 Layout Unlocked'}</button>
     </div>
     <div className="counters"><span>Pods {statistics?.readyPods ?? 0}/{statistics?.totalPods ?? 0}</span><span>Nodes {statistics?.readyNodes ?? 0}/{statistics?.totalNodes ?? 0}</span></div>
   </section>;

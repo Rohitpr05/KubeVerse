@@ -4,7 +4,7 @@
 // holds only paths, as a convenience MRU list, not a source of truth.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { kubeversePath } from './local/paths.js';
+import { kubeversePath, projectsRoot } from './local/paths.js';
 import { uuidv7 } from './local/uuidv7.js';
 import type { ArchitectureSpec } from './architecture/schema.js';
 
@@ -31,6 +31,7 @@ export interface GeneratedFileRecord {
 export interface GeneratedState {
   lastCompiledAt?: string;
   lastGeneratedAt?: string;
+  lastDeployedAt?: string;
   spec?: ArchitectureSpec;
   files?: GeneratedFileRecord[];
 }
@@ -82,6 +83,42 @@ function recordRecentProject(projectPath: string): void {
   writeFileSync(recentProjectsPath(), JSON.stringify(list.slice(0, 20), null, 2));
 }
 
+// Keeps a project name filesystem-safe (no path separators or characters
+// Windows forbids in a path segment) while preserving spaces/casing for
+// readability - project *directory* names are meant to stay human-readable
+// ("My E-Commerce App"), unlike the fully-slugified Kubernetes label values
+// in ownership.ts, which have much stricter constraints.
+function safeDirectoryName(name: string): string {
+  const cleaned = name
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/, '')
+    .trim();
+  return (cleaned || 'Untitled Project').slice(0, 100);
+}
+
+// Creates a brand-new project under KubeVerse's dedicated local projects
+// workspace (backend/src/local/paths.ts's projectsRoot() - never inside the
+// KubeVerse application/source tree) from a name alone - the primary project
+// creation path (KUBEVERSE_MASTER_SPEC.md's local-first project workspace).
+// A name collision gets a numeric suffix rather than silently reusing an
+// existing directory, so two differently-created projects are never merged.
+export function createProject(name: string): ProjectSummary {
+  const trimmedName = name.trim();
+  if (!trimmedName) throw new Error('Project name is required.');
+
+  const root = projectsRoot();
+  const base = safeDirectoryName(trimmedName);
+  let candidate = base;
+  let suffix = 2;
+  while (existsSync(join(root, candidate))) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return openOrCreateProject(join(root, candidate), trimmedName);
+}
+
 // Opens a project directory, creating the .kubeverse/ + generated/ scaffold and
 // a starter architecture.md if this is the first time KubeVerse has seen it.
 export function openOrCreateProject(inputPath: string, name?: string): ProjectSummary {
@@ -130,6 +167,7 @@ export interface ArchitectureStatus {
   serviceCount?: number;
   lastCompiledAt?: string;
   lastGeneratedAt?: string;
+  lastDeployedAt?: string;
   generatedFileCount?: number;
 }
 
@@ -144,6 +182,7 @@ function summarizeArchitecture(state: GeneratedState): ArchitectureStatus {
     serviceCount: state.spec?.services.length,
     lastCompiledAt: state.lastCompiledAt,
     lastGeneratedAt: state.lastGeneratedAt,
+    lastDeployedAt: state.lastDeployedAt,
     generatedFileCount: state.files?.length,
   };
 }

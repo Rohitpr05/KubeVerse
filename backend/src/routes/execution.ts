@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { checkDockerAvailable, composeDown, composeUp } from '../execution/dockerRunner.js';
 import { checkKubectlAvailable, applyManifests } from '../execution/kubernetesRunner.js';
-import { getProjectById } from '../workspace.js';
+import { getProjectById, writeGeneratedState } from '../workspace.js';
 
 interface ProjectParams {
   id: string;
@@ -52,6 +52,8 @@ export function registerExecutionRoutes(app: FastifyInstance): void {
     const availability = await checkKubectlAvailable();
     if (!availability.available) return reply.code(503).send({ error: `kubectl is not available: ${availability.error ?? 'unknown error'}` });
 
-    return applyManifests(kubernetesDir);
+    const result = await applyManifests(kubernetesDir);
+    if (result.ok) writeGeneratedState(project.path, { lastDeployedAt: new Date().toISOString() });
+    return result;
   });
 }

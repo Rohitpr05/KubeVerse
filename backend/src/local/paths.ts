@@ -16,3 +16,18 @@ export function kubeverseHome(): string {
 export function kubeversePath(...segments: string[]): string {
   return join(kubeverseHome(), ...segments);
 }
+
+// Where KubeVerse *user projects* live - deliberately separate from
+// kubeverseHome() above, which is hidden application config/state
+// (~/.kubeverse: identity, settings, the recent-projects index). Project
+// directories are the user's own data - architecture.md, generated source,
+// Docker/Kubernetes output - and must survive a KubeVerse reinstall/update,
+// so they get a normal, visible, discoverable folder rather than living
+// under a dotfile directory or (worse) inside KubeVerse's own source tree
+// (KUBEVERSE_MASTER_SPEC.md, "Local project workspace").
+const projectsRootPath = process.env.KUBEVERSE_PROJECTS_HOME ?? join(homedir(), 'KubeVerse');
+
+export function projectsRoot(): string {
+  mkdirSync(projectsRootPath, { recursive: true });
+  return projectsRootPath;
+}

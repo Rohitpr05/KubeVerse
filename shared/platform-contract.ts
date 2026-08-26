@@ -14,6 +14,9 @@ export interface ResourceCondition { type: string; status: string; reason?: stri
 export interface ContainerSummary { name: string; status: string; image?: string; restartCount: number; }
 export interface ResourceReference { uid?: string; kind: ClusterKind | string; name: string; namespace?: string; relation: string; }
 
+export interface ReplicaCounts { desired: number; current: number; ready: number; }
+export interface ServicePort { name?: string; port: number; targetPort: number; }
+
 export interface ClusterResource {
   uid: string;
   kind: ClusterKind;
@@ -29,6 +32,17 @@ export interface ClusterResource {
   containers?: ContainerSummary[];
   selector?: Record<string, string>;
   references: ResourceReference[];
+  // Structured replica counts for workload kinds (Deployment/ReplicaSet/
+  // StatefulSet/DaemonSet) - the same numbers `status` already renders as a
+  // human string (e.g. "1/2 Ready"), exposed machine-readably so the Lab
+  // experiment tracker can detect real scale convergence (desired === current
+  // === ready) without re-parsing that string.
+  replicas?: ReplicaCounts;
+  // Real container/target ports for a Service, read directly from
+  // spec.ports - used by the Lab traffic generator to know which port to
+  // reach on the Service's backing Pods; never guessed or defaulted from
+  // application conventions.
+  servicePorts?: ServicePort[];
 }
 
 export interface TimelineEvent {
@@ -97,4 +111,54 @@ export interface ObserverDiagnostics {
   startedAt: string;
   watchedKinds: Array<{ kind: ObservedKind; connected: boolean; lastListAt?: string; lastEventAt?: string; reconnects: number; lastError?: string }>;
   namespaceFilter: string[];
+}
+
+// --- Lab experiments (Phase 2) -------------------------------------------
+// A "Lab experiment" is a real, project-scoped Kubernetes mutation
+// (delete Pod / scale Deployment / rolling-restart Deployment / generate
+// real HTTP traffic) plus a running log of the *observed* Kubernetes state
+// transitions that followed it. Kubernetes remains the sole source of truth
+// for those transitions - this is bookkeeping around real observer events
+// (backend/src/cluster-state.ts), never a second simulated state model. If a
+// transition is never observed, `transitions` simply never gets an entry for
+// it - nothing here is ever fabricated to fill a gap.
+export type LabExperimentKind = 'traffic' | 'pod-failure' | 'restart' | 'scale';
+export type LabExperimentStatus = 'preparing' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface LabTransition {
+  timestamp: string;
+  kind: ClusterKind;
+  name: string;
+  status: string;
+  note: string;
+  explanation?: string;
+}
+
+export interface TrafficStats {
+  sent: number;
+  succeeded: number;
+  failed: number;
+  currentRps: number;
+  avgLatencyMs: number;
+  errorRate: number;
+  targetPods: string[];
+  lastHitPod?: string;
+}
+
+export interface LabExperiment {
+  id: string;
+  projectId: string;
+  kind: LabExperimentKind;
+  target: { kind: ClusterKind; namespace: string; name: string };
+  action: string;
+  startedAt: string;
+  endedAt?: string;
+  status: LabExperimentStatus;
+  transitions: LabTransition[];
+  traffic?: TrafficStats;
+  error?: string;
+}
+
+export interface LabUpdate {
+  experiment: LabExperiment;
 }

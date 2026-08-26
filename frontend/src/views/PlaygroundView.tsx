@@ -1,18 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Background, Controls, MiniMap, ReactFlow, type NodeMouseHandler, type ReactFlowInstance } from '@xyflow/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, type Edge, type NodeMouseHandler, type ReactFlowInstance } from '@xyflow/react';
 import { clusterKinds, type ClusterResource, type ClusterSnapshot, type ResourceGraph } from '@kubeverse/shared';
-import { buildFlowGraph, type ExplorerNodeData } from '../graph';
+import { buildExplorerEdges, filterVisible, layoutAllNodes, reconcileNodes, type ExplorerNode, type ExplorerNodeData } from '../graph';
 import { Inspector } from '../Inspector';
 import { ResourceNode } from '../ResourceNode';
 import { ExplorerControls } from '../ExplorerControls';
 import { Timeline } from '../Timeline';
 import { api, type EnvironmentStatus, type ProjectSummary } from '../api';
+import { shouldResetForProjectChange } from '../playgroundState';
 import type { ViewId } from '../shell/Sidebar';
 
 const emptySnapshot: ClusterSnapshot = {
   generatedAt: '', resources: [], events: [], observerErrors: [],
   statistics: { generatedAt: '', resourceCounts: {}, readyPods: 0, totalPods: 0, readyNodes: 0, totalNodes: 0 }
 };
+
+// How long a lost `currentProject` is tolerated as "probably transient"
+// before the Playground actually reverts to the true empty state. Nothing
+// in the app currently has a "close project" action, so once a project has
+// loaded successfully, `currentProject` becoming undefined is never an
+// intentional transition - it is treated as a hiccup to ride out, not a
+// reason to blank the topology.
+const LOST_PROJECT_GRACE_MS = 6000;
 
 async function loadSnapshot(projectId: string): Promise<ClusterSnapshot> {
   const response = await fetch(`/snapshot?projectId=${encodeURIComponent(projectId)}`);
@@ -33,55 +42,175 @@ async function loadGraph(projectId: string): Promise<ResourceGraph> {
 // component just always asks for `currentProject.id` and never falls back to
 // unscoped data. "How is MY architecture running?", not "what's on this
 // cluster?" (KUBEVERSE_MASTER_SPEC.md).
+//
+// State-update contract (see the root-cause writeup for how this was found):
+//  - snapshot and resourceGraph are committed ONLY together, from one place
+//    (refresh()), never independently - there is exactly one writer, so the
+//    two can never observably disagree with each other for a render.
+//  - At most one refresh() is ever in flight; an update signal that arrives
+//    while one is running is coalesced into a single trailing follow-up
+//    instead of firing a second overlapping fetch (this is what "many
+//    Kubernetes updates -> one coherent graph update" means here - no
+//    timer, no added latency on the first request).
+//  - The graph is only ever reset to empty for a *confirmed* project change
+//    (a different project id actually loaded successfully) or a genuine
+//    "no project has ever loaded" state - never merely because
+//    `currentProject` went briefly undefined, which is what was actually
+//    causing the reported disappearing-topology bug.
 export function PlaygroundView({ currentProject, navigate }: { currentProject: ProjectSummary | undefined; navigate: (view: ViewId) => void }) {
   const [snapshot, setSnapshot] = useState<ClusterSnapshot>(emptySnapshot);
   const [resourceGraph, setResourceGraph] = useState<ResourceGraph>();
   const [selected, setSelected] = useState<ClusterResource>();
   const [error, setError] = useState<string>();
+  const [updating, setUpdating] = useState(false);
   const [search, setSearch] = useState('');
   const [visibleKinds, setVisibleKinds] = useState<Set<string>>(() => new Set(clusterKinds));
-  const [flow, setFlow] = useState<ReactFlowInstance>();
+  const [flow, setFlow] = useState<ReactFlowInstance<ExplorerNode, Edge>>();
   const [environment, setEnvironment] = useState<EnvironmentStatus>();
   const [retryKey, setRetryKey] = useState(0);
+  const [locked, setLocked] = useState(true);
   const projectId = currentProject?.id;
-  const graph = useMemo(() => buildFlowGraph(snapshot.resources, resourceGraph, visibleKinds, search), [snapshot.resources, resourceGraph, visibleKinds, search]);
+
+  // React-Flow-owned topology state (Task 5): this - not resourceGraph - is
+  // the single source of truth for node *position*. resourceGraph only ever
+  // drives it through reconcileNodes (data updates in place, positions
+  // preserved) or layoutAllNodes (an explicit full re-layout: first load,
+  // project switch, or the Auto Layout button) - never through a second
+  // parallel graph/state system.
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<ExplorerNode>([]);
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  // Tracks which project the data currently on screen actually belongs to -
+  // separate from the `projectId` prop, precisely so a transient loss of
+  // `currentProject` doesn't look like "the project changed" to this effect.
+  const loadedProjectIdRef = useRef<string | undefined>(undefined);
+  const requestedProjectIdRef = useRef<string | undefined>(undefined);
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef(false);
+  const graceTimerRef = useRef<number | undefined>(undefined);
+
+  // Task 2/5: reconciles every snapshot/graph update into the existing
+  // React-Flow-owned node list - existing nodes keep their exact position
+  // (auto-laid-out or user-dragged) and only get fresh data; a brand new
+  // resource gets a position from one fresh layout pass. This never
+  // recomputes the whole topology's positions on an ordinary status change
+  // (e.g. Pod Running -> CrashLoopBackOff), and it's also what naturally
+  // clears the canvas when resourceGraph is reset to undefined for a project
+  // switch (see the effect above) - reconcileNodes(_, _, undefined) => [].
+  useEffect(() => {
+    setRfNodes((current) => reconcileNodes(current, snapshot.resources, resourceGraph));
+    setRfEdges(buildExplorerEdges(resourceGraph));
+  }, [snapshot.resources, resourceGraph, setRfNodes, setRfEdges]);
+
+  // Pure visibility filter (Task 5): never touches position, so toggling a
+  // kind filter or typing a search term can't move a single node.
+  const { nodes: visibleNodes, edges: visibleEdges } = useMemo(
+    () => filterVisible(rfNodes, rfEdges, visibleKinds, search),
+    [rfNodes, rfEdges, visibleKinds, search],
+  );
+
+  // Task 4: a full re-layout, run only on explicit request - never on an
+  // ordinary data update (see the reconciliation effect above). Fits the
+  // camera to the result afterward, same as a fresh project load.
+  const applyAutoLayout = useCallback(() => {
+    if (!resourceGraph) return;
+    setRfNodes(layoutAllNodes(snapshot.resources, resourceGraph));
+    requestAnimationFrame(() => flow?.fitView({ padding: 0.16, minZoom: 0.25, maxZoom: 1 }));
+  }, [resourceGraph, snapshot.resources, flow, setRfNodes]);
 
   const refresh = useCallback(async () => {
-    if (!projectId) return;
+    const targetProjectId = requestedProjectIdRef.current;
+    if (!targetProjectId) return;
+    if (inFlightRef.current) { pendingRef.current = true; return; }
+    inFlightRef.current = true;
+    setUpdating(true);
     try {
-      const [nextSnapshot, nextGraph] = await Promise.all([loadSnapshot(projectId), loadGraph(projectId)]);
+      const [nextSnapshot, nextGraph] = await Promise.all([loadSnapshot(targetProjectId), loadGraph(targetProjectId)]);
+      // The requested project may have changed while this was in flight (a
+      // real switch, or the grace-period project coming back under a
+      // different id) - a stale response must never overwrite what's
+      // current now.
+      if (requestedProjectIdRef.current !== targetProjectId) return;
+      // Atomic commit: both fields land in the same render, from the one
+      // place that ever sets either of them.
       setSnapshot(nextSnapshot);
       setResourceGraph(nextGraph);
       setError(undefined);
+      loadedProjectIdRef.current = targetProjectId;
     } catch (cause) {
+      if (requestedProjectIdRef.current !== targetProjectId) return;
+      // Task 9: a transient fetch failure surfaces as an error banner: it
+      // never clears snapshot/resourceGraph, so the last good topology stays
+      // visible underneath it.
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      inFlightRef.current = false;
+      setUpdating(false);
+      if (pendingRef.current) {
+        pendingRef.current = false;
+        void refresh();
+      }
     }
-  }, [projectId]);
+  }, []);
 
-  // Switching projects starts from a clean slate rather than showing the
-  // previous project's resources until the new fetch resolves.
+  // The only place that decides whether to reset to empty. A reset happens
+  // for a *confirmed* different project (or the very first project this
+  // component has ever seen) - never merely because `projectId` is
+  // momentarily undefined after a project was already loaded.
   useEffect(() => {
-    setSnapshot(emptySnapshot);
-    setResourceGraph(undefined);
-    setSelected(undefined);
-    setError(undefined);
+    requestedProjectIdRef.current = projectId;
+    if (graceTimerRef.current) { window.clearTimeout(graceTimerRef.current); graceTimerRef.current = undefined; }
+
+    if (projectId) {
+      if (shouldResetForProjectChange(loadedProjectIdRef.current, projectId)) {
+        // A real switch (including "first project ever loaded"): start clean.
+        setSnapshot(emptySnapshot);
+        setResourceGraph(undefined);
+        setSelected(undefined);
+        setError(undefined);
+        setUpdating(false);
+      }
+      return;
+    }
+
+    // projectId just went away. If nothing has ever loaded, this is a
+    // genuine "no project" state - show it immediately. If something HAD
+    // loaded, give it a grace period to come back (see LOST_PROJECT_GRACE_MS)
+    // before treating it as real; nothing in the current UI has a "close
+    // project" action, so a lasting loss here would itself indicate a bug
+    // elsewhere, not a user choice.
+    if (!shouldResetForProjectChange(loadedProjectIdRef.current, undefined)) {
+      graceTimerRef.current = window.setTimeout(() => {
+        if (requestedProjectIdRef.current) return; // recovered before the timer fired
+        loadedProjectIdRef.current = undefined;
+        setSnapshot(emptySnapshot);
+        setResourceGraph(undefined);
+        setSelected(undefined);
+        setError(undefined);
+        setUpdating(false);
+      }, LOST_PROJECT_GRACE_MS);
+    }
   }, [projectId]);
 
   useEffect(() => {
     if (!projectId) return;
     void refresh();
     const source = new EventSource(`/events?projectId=${encodeURIComponent(projectId)}`);
-    source.addEventListener('snapshot', (event) => setSnapshot(JSON.parse((event as MessageEvent).data) as ClusterSnapshot));
+    // Both event types are treated purely as "something may have changed,
+    // reconcile" signals - neither applies its payload directly. That keeps
+    // there being exactly one writer of snapshot/resourceGraph (refresh()),
+    // so the two can't ever land in different renders relative to each other.
+    source.addEventListener('snapshot', () => { void refresh(); });
     source.addEventListener('cluster-update', () => { void refresh(); });
     source.onerror = () => setError('Live connection interrupted. The browser will retry automatically.');
     return () => source.close();
   }, [refresh, projectId, retryKey]);
 
   useEffect(() => {
-    if (!flow || graph.nodes.length === 0) return;
+    if (!flow || visibleNodes.length === 0) return;
     const frame = requestAnimationFrame(() => flow.fitView({ padding: 0.16, minZoom: 0.25, maxZoom: 1 }));
     return () => cancelAnimationFrame(frame);
-  }, [flow, graph.nodes.length, graph.edges.length]);
+  }, [flow, visibleNodes.length, visibleEdges.length]);
 
   // Keep an open inspector synchronized with the latest resource cache without
   // changing the user's selection or reloading the page.
@@ -91,7 +220,10 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
     setSelected(currentResource);
   }, [snapshot.resources, selected?.uid]);
 
-  const unavailable = snapshot.resources.length === 0 && (Boolean(error) || snapshot.observerErrors.length > 0);
+  // Only the "never had any data" case counts as genuinely unavailable - once
+  // real resources have been shown, a transient error becomes a banner
+  // (below), not a full-screen replacement of the topology (Task 9).
+  const unavailable = snapshot.resources.length === 0 && !loadedProjectIdRef.current && (Boolean(error) || snapshot.observerErrors.length > 0);
 
   useEffect(() => {
     if (!unavailable) return;
@@ -108,7 +240,8 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
   const toggleKind = (kind: typeof clusterKinds[number]) => setVisibleKinds((current) => {
     const next = new Set(current); if (next.has(kind)) next.delete(kind); else next.add(kind); return next;
   });
-  if (!currentProject) {
+
+  if (!currentProject && !loadedProjectIdRef.current) {
     return (
       <div className="playground-view">
         <div className="view">
@@ -133,6 +266,9 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
         statistics={snapshot.statistics}
         onFit={() => flow?.fitView({ padding: 0.16, minZoom: 0.25, maxZoom: 1 })}
         onReset={() => flow?.setViewport({ x: 0, y: 0, zoom: 1 })}
+        locked={locked}
+        onToggleLock={() => setLocked((current) => !current)}
+        onAutoLayout={applyAutoLayout}
       />
 
       {unavailable ? (
@@ -151,9 +287,27 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
       ) : (
         <>
         {snapshot.observerErrors.length > 0 && <div className="observer-warning">Observer: {snapshot.observerErrors.at(-1)}</div>}
+        {error ? (
+          <div className="observer-warning">⚠ Unable to refresh cluster state - retrying… ({error})</div>
+        ) : (!currentProject || updating) && (
+          <div className="observer-warning updating">{!currentProject ? 'Reconnecting to project…' : 'Updating cluster state…'}</div>
+        )}
         <section className="explorer-layout">
           <div className="canvas">
-            <ReactFlow nodes={graph.nodes} edges={graph.edges} nodeTypes={{ resource: ResourceNode }} onNodeClick={selectNode} onInit={setFlow} fitView fitViewOptions={{ padding: 0.16, minZoom: 0.25, maxZoom: 1 }} minZoom={0.15} maxZoom={2}>
+            <ReactFlow<ExplorerNode>
+              nodes={visibleNodes}
+              edges={visibleEdges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              nodesDraggable={!locked}
+              nodeTypes={{ resource: ResourceNode }}
+              onNodeClick={selectNode}
+              onInit={setFlow}
+              fitView
+              fitViewOptions={{ padding: 0.16, minZoom: 0.25, maxZoom: 1 }}
+              minZoom={0.15}
+              maxZoom={2}
+            >
               <Background gap={18} size={1} />
               <Controls />
               <MiniMap />
