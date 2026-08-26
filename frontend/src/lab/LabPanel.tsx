@@ -1,16 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ClusterResource, LabExperiment } from '@kubeverse/shared';
 import { api } from '../api';
 
+const FAIL_POD_COUNTDOWN_SECONDS = 3;
+
 // The Playground's interactive experiment controls (KUBEVERSE_MASTER_SPEC.md
-// Phase 2, Part 1). Deliberately its own collapsible side panel, not folded
-// into the topology toolbar - these are project-mutating actions, distinct
-// from the read-only Fit/Reset/Lock/filter controls above the canvas.
-// Every control here only ever offers resources from `resources`, which the
-// caller (PlaygroundView) already scopes to the current project via
-// `/snapshot?projectId=` - there is no way to target a resource outside the
-// open project from this UI, and the backend independently re-verifies
-// ownership regardless (backend/src/routes/lab.ts).
+// Phase 2, Part 1) - rendered inside LabDrawer.tsx's slide-over, never as a
+// permanent layout column. Every control here only ever offers resources
+// from `resources`, which the caller (PlaygroundView) already scopes to the
+// current project via `/snapshot?projectId=` - there is no way to target a
+// resource outside the open project from this UI, and the backend
+// independently re-verifies ownership regardless (backend/src/routes/lab.ts).
 export function LabPanel({ projectId, resources, activeExperiment, onExperimentStarted, onError }: {
   projectId: string;
   resources: ClusterResource[];
@@ -18,7 +18,6 @@ export function LabPanel({ projectId, resources, activeExperiment, onExperimentS
   onExperimentStarted: (experiment: LabExperiment) => void;
   onError: (message: string) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
   const services = resources.filter((resource) => resource.kind === 'Service');
   const deployments = resources.filter((resource) => resource.kind === 'Deployment');
   const pods = resources.filter((resource) => resource.kind === 'Pod');
@@ -33,20 +32,8 @@ export function LabPanel({ projectId, resources, activeExperiment, onExperimentS
     }
   }
 
-  if (collapsed) {
-    return (
-      <aside className="lab-panel collapsed">
-        <button className="lab-panel-toggle" onClick={() => setCollapsed(false)} title="Expand Lab Controls">🧪</button>
-      </aside>
-    );
-  }
-
   return (
-    <aside className="lab-panel">
-      <div className="lab-panel-header">
-        <h2>Lab Controls</h2>
-        <button className="lab-panel-toggle" onClick={() => setCollapsed(true)} title="Collapse">«</button>
-      </div>
+    <>
       {busy && (
         <div className="lab-active-experiment">
           <p><strong>{activeExperiment!.action}</strong></p>
@@ -62,7 +49,7 @@ export function LabPanel({ projectId, resources, activeExperiment, onExperimentS
           <ScaleControl projectId={projectId} deployments={deployments} onStart={onExperimentStarted} onError={onError} disabled={busy} />
         </>
       )}
-    </aside>
+    </>
   );
 }
 
@@ -98,20 +85,74 @@ function TrafficControl({ projectId, services, onStart, onError, disabled }: { p
 
 function FailPodControl({ projectId, pods, onStart, onError, disabled }: { projectId: string; pods: ClusterResource[]; onStart: (experiment: LabExperiment) => void; onError: (message: string) => void; disabled: boolean }) {
   const [podKey, setPodKey] = useState('');
+  // The countdown target is captured once, at confirmation time, rather than
+  // re-read from `selected` on every tick - `pods` is live SSE-driven data,
+  // and re-deriving `selected` from a stale `podKey` right as the timer
+  // fires could momentarily see it as gone if the Pod list happens to
+  // reconcile mid-countdown.
+  const [pendingTarget, setPendingTarget] = useState<{ name: string; namespace: string }>();
+  const [countdown, setCountdown] = useState<number>();
   const selected = pods.find((pod) => `${pod.namespace}/${pod.name}` === podKey);
 
-  async function fail() {
+  function beginFail() {
     if (!selected?.namespace) return onError('Select a Pod first.');
     const confirmed = window.confirm(
       `This will terminate Pod "${selected.name}" and allow Kubernetes to demonstrate its self-healing behavior. Continue?`,
     );
     if (!confirmed) return;
-    try {
-      const { experiment } = await api.failPod(projectId, selected.name, selected.namespace);
-      onStart(experiment);
-    } catch (cause) {
-      onError(cause instanceof Error ? cause.message : String(cause));
+    setPendingTarget({ name: selected.name, namespace: selected.namespace });
+    setCountdown(FAIL_POD_COUNTDOWN_SECONDS);
+  }
+
+  function cancelCountdown() {
+    setPendingTarget(undefined);
+    setCountdown(undefined);
+  }
+
+  // onStart/onError are ultimately backed by PlaygroundView's
+  // applyExperimentUpdate, a useCallback keyed on `rfNodes` - its identity
+  // changes on essentially every SSE-driven topology update, which arrive far
+  // more often than once a second. Depending on them directly would restart
+  // this effect (clearing the pending setTimeout) before it ever reached
+  // 1000ms, silently freezing the countdown - confirmed live: the number
+  // never ticked past its starting value. Reading them through a ref keeps
+  // the timer stable while still always calling the latest callback.
+  const callbacksRef = useRef({ onStart, onError });
+  useEffect(() => { callbacksRef.current = { onStart, onError }; });
+
+  // Purely a frontend UX pause before the one real mutation - the countdown
+  // itself has no Kubernetes meaning and updates no observed state; once it
+  // reaches zero the real `api.failPod` call is what actually deletes the
+  // Pod (KUBEVERSE_MASTER_SPEC.md Phase 2 UX refinement, Part 9).
+  useEffect(() => {
+    if (countdown === undefined || !pendingTarget) return;
+    if (countdown <= 0) {
+      const target = pendingTarget;
+      setPendingTarget(undefined);
+      setCountdown(undefined);
+      void (async () => {
+        try {
+          const { experiment } = await api.failPod(projectId, target.name, target.namespace);
+          callbacksRef.current.onStart(experiment);
+        } catch (cause) {
+          callbacksRef.current.onError(cause instanceof Error ? cause.message : String(cause));
+        }
+      })();
+      return;
     }
+    const timer = window.setTimeout(() => setCountdown((value) => (value ?? 1) - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown, pendingTarget, projectId]);
+
+  if (pendingTarget) {
+    return (
+      <section className="lab-control lab-countdown">
+        <h3>Pod Failure</h3>
+        <p>Failing <strong>{pendingTarget.name}</strong> in…</p>
+        <div className="countdown-number">{countdown}</div>
+        <button onClick={cancelCountdown}>Cancel</button>
+      </section>
+    );
   }
 
   return (
@@ -121,7 +162,7 @@ function FailPodControl({ projectId, pods, onStart, onError, disabled }: { proje
         <option value="">Select a Pod…</option>
         {pods.map((pod) => <option key={pod.uid} value={`${pod.namespace}/${pod.name}`}>{pod.name}</option>)}
       </select></label>
-      <button onClick={fail} disabled={disabled || !podKey}>Fail Pod</button>
+      <button onClick={beginFail} disabled={disabled || !podKey}>Fail Pod</button>
     </section>
   );
 }

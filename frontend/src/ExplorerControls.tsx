@@ -7,12 +7,17 @@ import { PopoverDropdown } from './components/PopoverDropdown';
 // resources always live in exactly one namespace - the old per-namespace
 // filter had nothing left to do, and would have hidden cluster-scoped Nodes
 // (which have no namespace) if left in place.
-export function ExplorerControls({ search, setSearch, visibleKinds, toggleKind, statistics, onFit, onReset, locked, onToggleLock, onAutoLayout }: {
+export function ExplorerControls({ search, setSearch, visibleKinds, toggleKind, statistics, onFit, onReset, locked, onToggleLock, onAutoLayout, labDrawerOpen, onToggleLabDrawer }: {
   search: string; setSearch: (value: string) => void;
   visibleKinds: Set<string>; toggleKind: (kind: ClusterKind) => void; statistics?: ClusterStatistics; onFit: () => void; onReset: () => void;
   locked: boolean; onToggleLock: () => void; onAutoLayout: () => void;
+  labDrawerOpen: boolean; onToggleLabDrawer: () => void;
 }) {
   return <section className="controls-panel">
+    {/* The Lab Controls trigger lives here so it's always reachable whether
+        the drawer (lab/LabDrawer.tsx) is open or closed - it never disappears,
+        it just reflects current state via aria-pressed/the active class. */}
+    <button className="lab-drawer-trigger" onClick={onToggleLabDrawer} aria-pressed={labDrawerOpen}>🧪 Lab Controls</button>
     <label>Search<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="name, kind, namespace" /></label>
     <PopoverDropdown label="Filters">
       <div className="kind-filters">{clusterKinds.map((kind) => <label key={kind}><input type="checkbox" checked={visibleKinds.has(kind)} onChange={() => toggleKind(kind)} />{kind}</label>)}</div>

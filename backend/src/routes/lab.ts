@@ -47,6 +47,25 @@ function resolveOwnedTarget(state: ClusterState, projectId: string, kind: string
   return resource && state.isResourceOwnedByProject(resource, projectId) ? resource : undefined;
 }
 
+// The same real selector-match the graph builder already computed
+// (resource-graph.ts's 'selects' edges) - never a re-implementation of
+// Service->Pod resolution - restricted to currently-Ready Pods, which is
+// exactly the condition that determines real Kubernetes Endpoints. Called
+// once to start a traffic experiment and then again periodically WHILE it
+// runs (see trafficRunner.ts's `refreshTargets`), so a Pod failing mid-run
+// (or its replacement becoming Ready) is reflected in live traffic - never
+// hardcoded by Pod name, always the current observed selector match.
+function resolveReadyTargets(state: ClusterState, projectId: string, service: ClusterResource): TrafficTarget[] {
+  const graph = state.projectGraph(projectId);
+  const readyPodUids = new Set(
+    graph.edges.filter((edge) => edge.relation === 'selects' && edge.source === service.uid).map((edge) => edge.target),
+  );
+  return [...readyPodUids]
+    .map((uid) => state.resourceByUid(uid))
+    .filter((resource): resource is ClusterResource => Boolean(resource && resource.status.includes('(Ready)') && resource.namespace))
+    .map((resource) => ({ namespace: resource.namespace!, podName: resource.name }));
+}
+
 export function registerLabRoutes(app: FastifyInstance, state: ClusterState, experiments: ExperimentTracker): void {
   const activeTraffic = new Map<string, AbortController>();
 
@@ -149,19 +168,7 @@ export function registerLabRoutes(app: FastifyInstance, state: ClusterState, exp
     const port = service.servicePorts?.[0];
     if (!port) return reply.code(400).send({ error: 'Service has no declared port.' });
 
-    // The same real selector-match the graph builder already computed
-    // (resource-graph.ts's 'selects' edges) - never a re-implementation of
-    // Service->Pod resolution, and restricted to currently-Ready Pods, which
-    // is exactly the condition that determines real Kubernetes Endpoints.
-    const graph = state.projectGraph(id);
-    const readyPodUids = new Set(
-      graph.edges.filter((edge) => edge.relation === 'selects' && edge.source === service.uid).map((edge) => edge.target),
-    );
-    const targets: TrafficTarget[] = [...readyPodUids]
-      .map((uid) => state.resourceByUid(uid))
-      .filter((resource): resource is ClusterResource => Boolean(resource && resource.status.includes('(Ready)') && resource.namespace))
-      .map((resource) => ({ namespace: resource.namespace!, podName: resource.name }));
-
+    const targets = resolveReadyTargets(state, id, service);
     if (targets.length === 0) {
       return reply.code(409).send({ error: 'Service has no reachable (Ready) endpoint. Deploy the project and wait for its Pods to become Ready before generating traffic.' });
     }
@@ -175,6 +182,12 @@ export function registerLabRoutes(app: FastifyInstance, state: ClusterState, exp
       totalRequests: requests, requestsPerSecond, path: healthPathFor(project, service.name), remotePort: port.targetPort,
       targets, signal: controller.signal,
       onProgress: (stats) => experiments.updateTraffic(experiment.id, stats),
+      // Re-resolves currently-Ready endpoints periodically while traffic is
+      // running (Phase 2 UX refinement, "traffic + failure interaction") -
+      // if a targeted Pod fails mid-run, or a replacement becomes Ready, the
+      // live request loop's own targets follow the real observed endpoint
+      // set instead of staying frozen at whatever was Ready when it started.
+      refreshTargets: async () => resolveReadyTargets(state, id, service),
     })
       .then(() => { if (controller.signal.aborted) experiments.cancel(experiment.id); else experiments.completeTraffic(experiment.id); })
       .catch((error: unknown) => experiments.fail(experiment.id, error instanceof Error ? error.message : String(error)))

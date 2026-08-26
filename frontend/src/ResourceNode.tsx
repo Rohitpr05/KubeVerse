@@ -2,10 +2,10 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { ExplorerNode } from './graph';
 
 export function ResourceNode({ data, selected }: NodeProps<ExplorerNode>) {
-  const { resource } = data;
+  const { resource, highlighted } = data;
   const statusTone = resource.status.includes('Ready') || resource.status === 'Active' || resource.status === 'Running' ? 'healthy' : resource.status.includes('Failed') || resource.status.includes('NotReady') ? 'unhealthy' : 'pending';
   return (
-    <div className={`resource-node ${selected ? 'selected' : ''}`}>
+    <div className={`resource-node ${selected ? 'selected' : ''} ${highlighted ? 'experiment-target' : ''}`}>
       <Handle type="target" position={Position.Left} />
       <div className="resource-topline"><span className="resource-kind">{resource.kind}</span><span className={`status-dot ${statusTone}`} /></div>
       <div className="resource-name" title={resource.name}>{resource.name}</div>

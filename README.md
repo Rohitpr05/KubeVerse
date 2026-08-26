@@ -55,3 +55,19 @@ shared/                     @kubeverse/shared - the backend<->frontend Kubernete
 examples/legacy-simulator/  Self-contained legacy demo application (not part of KubeVerse core)
 docs/                       Supporting design notes
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for information about reporting issues, proposing features, making changes, running project checks, and submitting pull requests.
+
+## Project Name and Branding
+
+The KubeVerse name, logo, and associated project branding are not covered by the Apache License 2.0. The software license does not grant permission to use the project's branding in a way that implies endorsement, sponsorship, or official affiliation with the KubeVerse project or its maintainers.
+
+## License
+
+KubeVerse is licensed under the Apache License 2.0.
+
+See the [LICENSE](LICENSE) file for the complete license text.
+
+Copyright © 2026 Rohit PR.

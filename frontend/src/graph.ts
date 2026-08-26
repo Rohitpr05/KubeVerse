@@ -8,7 +8,12 @@ import type { ClusterKind, ClusterResource, ResourceGraph } from '@kubeverse/sha
 import type { Edge, Node } from '@xyflow/react';
 import { computeLayout, resolveOverlaps, type Point } from './layout';
 
-export type ExplorerNodeData = { resource: ClusterResource };
+// `highlighted` is never set by anything in this module - it's a render-time
+// overlay PlaygroundView applies to a *copy* of a node's data (never the
+// underlying rfNodes state) when that node is the target of the currently
+// active Lab experiment, so the topology can visually call it out without
+// graph.ts knowing anything about experiments.
+export type ExplorerNodeData = { resource: ClusterResource; highlighted?: boolean };
 export type ExplorerNode = Node<ExplorerNodeData, 'resource'>;
 
 const palette: Record<ClusterKind, string> = {

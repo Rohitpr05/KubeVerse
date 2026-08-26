@@ -105,6 +105,48 @@ test('a replacement Pod created by the tracked ReplicaSet is picked up dynamical
   assert.ok(finished.endedAt);
 });
 
+// Regression test for a real bug found via live-cluster UX verification: the
+// convergence check used to re-derive "the root Deployment" as the last
+// element of `trackedUids`, which is correct only at start() - the set keeps
+// growing as new children (like the replacement Pod here) are dynamically
+// discovered and appended, so by the time the replacement Pod's own Ready
+// update arrived, ITS uid had silently become "the root", and convergence
+// stopped firing at all. The fix stores rootUid once, separately, at start().
+test('convergence still resolves to the real Deployment root after a child Pod has been dynamically tracked (not the child\'s own uid)', () => {
+  const state = buildFixture();
+  const tracker = new ExperimentTracker(state);
+  const pod = state.resourceByUid('pod-1')!;
+  const experiment = tracker.start(PROJECT_A, 'pod-failure', pod, 'Fail Pod backend-abc-111');
+
+  state.apply('Pod', 'DELETED', {
+    metadata: { uid: 'pod-1', name: 'backend-abc-111', namespace: 'shop', labels: withOwnership({ app: 'backend' }), ownerReferences: [{ uid: 'rs-1', kind: 'ReplicaSet', name: 'backend-abc', controller: true }] },
+  });
+  // The replacement Pod is discovered dynamically - this is what grows
+  // trackedUids and is exactly the step that used to corrupt "the root".
+  state.apply('Pod', 'ADDED', {
+    metadata: { uid: 'pod-2', name: 'backend-abc-222', namespace: 'shop', labels: withOwnership({ app: 'backend' }), ownerReferences: [{ uid: 'rs-1', kind: 'ReplicaSet', name: 'backend-abc', controller: true }] },
+    spec: { containers: [{ name: 'backend' }] }, status: { phase: 'Pending' },
+  });
+  // The Deployment already reports the recovered count in ClusterState
+  // before the replacement Pod finishes becoming Ready (its own watch event
+  // just hasn't fired again since) - exactly the live scenario that
+  // surfaced this bug.
+  state.apply('Deployment', 'MODIFIED', {
+    metadata: { uid: 'dep-1', name: 'backend', namespace: 'shop', labels: withOwnership({ app: 'backend' }) },
+    spec: { replicas: 1 }, status: { replicas: 1, readyReplicas: 1 },
+  });
+  assert.equal(tracker.get(PROJECT_A, experiment.id)!.status, 'running', 'not converged yet - the replacement Pod itself is not Ready yet');
+
+  // The replacement becomes Ready - this Pod-kind update, on its own (no
+  // further Deployment update arrives), must be what triggers convergence.
+  state.apply('Pod', 'MODIFIED', {
+    metadata: { uid: 'pod-2', name: 'backend-abc-222', namespace: 'shop', labels: withOwnership({ app: 'backend' }), ownerReferences: [{ uid: 'rs-1', kind: 'ReplicaSet', name: 'backend-abc', controller: true }] },
+    spec: { containers: [{ name: 'backend' }] }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }] },
+  });
+
+  assert.equal(tracker.get(PROJECT_A, experiment.id)!.status, 'completed');
+});
+
 // Regression test for a real bug found via live-cluster verification: a
 // rolling restart patches the Pod template, but the Deployment's very first
 // subsequent status update can still describe the *pre-restart* Pod (which
