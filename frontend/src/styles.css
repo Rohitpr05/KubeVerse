@@ -236,6 +236,13 @@ dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-s
 .lab-control button:hover:not(:disabled) { background: #274a76; }
 .lab-control button:disabled { opacity: .5; cursor: not-allowed; }
 .lab-hint { margin: 0; color: #7f91a7; font-size: .67rem; line-height: 1.4; }
+/* Traffic readiness status (KubeVerse traffic simulation readiness fix):
+   compact, single line - never a dialog. Color communicates severity at a
+   glance without duplicating the Live Timeline's detailed event text. */
+.lab-readiness-status { margin: 0; font-size: .71rem; line-height: 1.4; }
+.lab-readiness-status.status-no-pods, .lab-readiness-status.status-pending, .lab-readiness-status.status-not-ready { color: #fbbf24; }
+.lab-readiness-status.status-failing { color: #fca5a5; }
+.lab-readiness-status.status-ready { color: #6ee7b7; }
 .scale-stepper { display: flex; align-items: center; gap: 10px; justify-content: center; }
 .scale-stepper button { width: 28px; height: 28px; padding: 0; }
 .scale-stepper span { min-width: 20px; text-align: center; font-weight: 650; }

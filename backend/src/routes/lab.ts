@@ -55,15 +55,33 @@ function resolveOwnedTarget(state: ClusterState, projectId: string, kind: string
 // runs (see trafficRunner.ts's `refreshTargets`), so a Pod failing mid-run
 // (or its replacement becoming Ready) is reflected in live traffic - never
 // hardcoded by Pod name, always the current observed selector match.
-function resolveReadyTargets(state: ClusterState, projectId: string, service: ClusterResource): TrafficTarget[] {
+function selectedPods(state: ClusterState, projectId: string, service: ClusterResource): ClusterResource[] {
   const graph = state.projectGraph(projectId);
-  const readyPodUids = new Set(
-    graph.edges.filter((edge) => edge.relation === 'selects' && edge.source === service.uid).map((edge) => edge.target),
-  );
-  return [...readyPodUids]
-    .map((uid) => state.resourceByUid(uid))
-    .filter((resource): resource is ClusterResource => Boolean(resource && resource.status.includes('(Ready)') && resource.namespace))
+  const podUids = graph.edges.filter((edge) => edge.relation === 'selects' && edge.source === service.uid).map((edge) => edge.target);
+  return podUids.map((uid) => state.resourceByUid(uid)).filter((resource): resource is ClusterResource => Boolean(resource && resource.kind === 'Pod'));
+}
+
+function resolveReadyTargets(state: ClusterState, projectId: string, service: ClusterResource): TrafficTarget[] {
+  return selectedPods(state, projectId, service)
+    .filter((resource) => resource.status.includes('(Ready)') && resource.namespace)
     .map((resource) => ({ namespace: resource.namespace!, podName: resource.name }));
+}
+
+// A minimal, honest fallback for the (now rare, since the frontend gates the
+// button on its own live readiness check - see
+// frontend/src/lab/trafficReadiness.ts) case where this route is still hit
+// without a Ready endpoint - e.g. a direct API call, or a state change that
+// landed in the split second between the click and this request. This is
+// intentionally not a full re-implementation of that frontend classification
+// (that would be a second, duplicated readiness system) - just enough real
+// detail (how many Pods exist and their most useful individual status) to
+// not regress to a completely generic message.
+function describeNotReady(pods: ClusterResource[]): string {
+  if (pods.length === 0) {
+    return 'Service has no reachable (Ready) endpoint: no Pods exist for it yet. Deploy the project and wait for its Pods to start.';
+  }
+  const statuses = [...new Set(pods.map((pod) => pod.status))].join(', ');
+  return `Service has no reachable (Ready) endpoint: its ${pods.length} Pod(s) are not Ready yet (${statuses}). Check the Live Timeline for details.`;
 }
 
 export function registerLabRoutes(app: FastifyInstance, state: ClusterState, experiments: ExperimentTracker): void {
@@ -170,7 +188,7 @@ export function registerLabRoutes(app: FastifyInstance, state: ClusterState, exp
 
     const targets = resolveReadyTargets(state, id, service);
     if (targets.length === 0) {
-      return reply.code(409).send({ error: 'Service has no reachable (Ready) endpoint. Deploy the project and wait for its Pods to become Ready before generating traffic.' });
+      return reply.code(409).send({ error: describeNotReady(selectedPods(state, id, service)) });
     }
 
     const experiment = experiments.start(id, 'traffic', service, `Generate traffic: ${requests} requests to ${service.name}`);

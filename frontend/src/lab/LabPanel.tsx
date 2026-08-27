@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import type { ClusterResource, LabExperiment } from '@kubeverse/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ClusterResource, LabExperiment, ResourceGraph, TimelineEvent } from '@kubeverse/shared';
 import { api } from '../api';
+import { computeTrafficReadiness } from './trafficReadiness';
 
 const FAIL_POD_COUNTDOWN_SECONDS = 3;
 
@@ -11,9 +12,11 @@ const FAIL_POD_COUNTDOWN_SECONDS = 3;
 // current project via `/snapshot?projectId=` - there is no way to target a
 // resource outside the open project from this UI, and the backend
 // independently re-verifies ownership regardless (backend/src/routes/lab.ts).
-export function LabPanel({ projectId, resources, activeExperiment, onExperimentStarted, onError }: {
+export function LabPanel({ projectId, resources, resourceGraph, events, activeExperiment, onExperimentStarted, onError }: {
   projectId: string;
   resources: ClusterResource[];
+  resourceGraph: ResourceGraph | undefined;
+  events: TimelineEvent[];
   activeExperiment?: LabExperiment;
   onExperimentStarted: (experiment: LabExperiment) => void;
   onError: (message: string) => void;
@@ -43,7 +46,7 @@ export function LabPanel({ projectId, resources, activeExperiment, onExperimentS
       )}
       {!busy && (
         <>
-          <TrafficControl projectId={projectId} services={services} onStart={onExperimentStarted} onError={onError} disabled={busy} />
+          <TrafficControl projectId={projectId} services={services} resources={resources} resourceGraph={resourceGraph} events={events} onStart={onExperimentStarted} onError={onError} disabled={busy} />
           <FailPodControl projectId={projectId} pods={pods} onStart={onExperimentStarted} onError={onError} disabled={busy} />
           <RestartControl projectId={projectId} deployments={deployments} onStart={onExperimentStarted} onError={onError} disabled={busy} />
           <ScaleControl projectId={projectId} deployments={deployments} onStart={onExperimentStarted} onError={onError} disabled={busy} />
@@ -53,19 +56,50 @@ export function LabPanel({ projectId, resources, activeExperiment, onExperimentS
   );
 }
 
-function TrafficControl({ projectId, services, onStart, onError, disabled }: { projectId: string; services: ClusterResource[]; onStart: (experiment: LabExperiment) => void; onError: (message: string) => void; disabled: boolean }) {
+function TrafficControl({ projectId, services, resources, resourceGraph, events, onStart, onError, disabled }: {
+  projectId: string; services: ClusterResource[]; resources: ClusterResource[]; resourceGraph: ResourceGraph | undefined; events: TimelineEvent[];
+  onStart: (experiment: LabExperiment) => void; onError: (message: string) => void; disabled: boolean;
+}) {
   const [serviceKey, setServiceKey] = useState('');
   const [requests, setRequests] = useState(100);
   const [rps, setRps] = useState(20);
   const selected = services.find((service) => `${service.namespace}/${service.name}` === serviceKey);
 
+  // A stale selection naturally reads as "not ready" (computeTrafficReadiness
+  // never finds a matching Pod for a Service from another project's graph),
+  // so nothing could ever start against the wrong project - but clearing it
+  // on project switch keeps the dropdown itself from showing a leftover
+  // selection that no longer exists here.
+  useEffect(() => setServiceKey(''), [projectId]);
+
+  // Recomputed on every render from already-live, SSE-driven props - see
+  // trafficReadiness.ts. This is what makes a Pending -> Ready transition
+  // (or a Pod starting to fail) update the button/status automatically: no
+  // polling, no page reload, just the same re-render the topology already
+  // gets whenever the project's real Kubernetes state changes.
+  const readiness = useMemo(
+    () => computeTrafficReadiness(selected, resources, resourceGraph, events),
+    [selected, resources, resourceGraph, events],
+  );
+  const canStart = readiness.kind === 'ready';
+
   async function start() {
     if (!selected?.namespace) return onError('Select a service first.');
+    if (!canStart) return onError(`Cannot start traffic: ${readiness.message}`);
     try {
       onStart(await api.startTraffic(projectId, { serviceNamespace: selected.namespace, serviceName: selected.name, requests, requestsPerSecond: rps }));
     } catch (cause) {
       onError(cause instanceof Error ? cause.message : String(cause));
     }
+  }
+
+  if (services.length === 0) {
+    return (
+      <section className="lab-control">
+        <h3>Traffic</h3>
+        <p className="lab-readiness-status">Deploy the project before starting traffic.</p>
+      </section>
+    );
   }
 
   return (
@@ -77,7 +111,12 @@ function TrafficControl({ projectId, services, onStart, onError, disabled }: { p
       </select></label>
       <label>Requests<input type="number" min={1} max={5000} value={requests} onChange={(event) => setRequests(Number(event.target.value))} disabled={disabled} /></label>
       <label>Requests/sec<input type="number" min={1} max={100} value={rps} onChange={(event) => setRps(Number(event.target.value))} disabled={disabled} /></label>
-      <button onClick={start} disabled={disabled || !serviceKey}>Start Traffic</button>
+      <button onClick={start} disabled={disabled || !serviceKey || !canStart}>Start Traffic</button>
+      {/* Docker Desktop running, or the Deployment/ReplicaSet/Pod merely
+          existing, is never treated as "ready" here - only a real Kubernetes
+          Pod the observer reports as Ready counts (trafficReadiness.ts). */}
+      {serviceKey && !canStart && <p className={`lab-readiness-status status-${readiness.kind}`}>{readiness.message}</p>}
+      {serviceKey && canStart && <p className="lab-readiness-status status-ready">Ready — {readiness.readyPodCount}/{readiness.totalPodCount} Pods.</p>}
       <p className="lab-hint">Sends real HTTP requests to this service's configured health check path, against its currently-Ready Pods, over a live port-forward.</p>
     </section>
   );

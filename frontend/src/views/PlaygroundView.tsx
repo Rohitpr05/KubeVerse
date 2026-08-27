@@ -426,6 +426,8 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
           <LabPanel
             projectId={projectId}
             resources={snapshot.resources}
+            resourceGraph={resourceGraph}
+            events={snapshot.events}
             activeExperiment={activeExperiment}
             onExperimentStarted={applyExperimentUpdate}
             onError={setLabError}
