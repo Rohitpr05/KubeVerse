@@ -1,6 +1,5 @@
 // The platform API is intentionally read-only: it projects Kubernetes state and streams incremental observations.
 import Fastify from 'fastify';
-import cors from '@fastify/cors';
 import staticFiles from '@fastify/static';
 import type { ServerResponse } from 'node:http';
 import type { ClusterResource, ClusterUpdate, TimelineEvent } from '@kubeverse/shared';
@@ -48,7 +47,14 @@ const observer = new KubernetesObserver(state, namespaceFilter);
 const metrics = new UnavailableMetricsProvider();
 const experiments = new ExperimentTracker(state);
 
-await app.register(cors, { origin: true });
+// No CORS is registered, deliberately: the browser only ever reaches this
+// backend same-origin (Vite's dev-server proxy makes the actual request
+// server-side; the packaged Electron app serves the built frontend from
+// this same backend origin via PLATFORM_STATIC_DIR - see main.js). This
+// backend can run `docker compose up/down`, `kubectl apply`, delete/restart
+// Pods, and generate traffic load - a permissive `origin: true` CORS policy
+// would let any webpage a user has open in their browser make those same
+// requests cross-origin just because KubeVerse happens to be running.
 
 registerIdentityRoutes(app);
 registerSettingsRoutes(app);

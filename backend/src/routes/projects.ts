@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createProject, getProjectById, listProjectsWithArchitecture, openOrCreateProject, readArchitectureSource, readGeneratedState } from '../workspace.js';
@@ -65,6 +65,20 @@ export function registerProjectRoutes(app: FastifyInstance): void {
     if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
       return reply.code(404).send({ error: 'File not found' });
     }
-    return { path: relativePath, contents: readFileSync(absolutePath, 'utf8') };
+    // The lexical check above only rejects "../"-style traversal in the
+    // requested path string itself - it never touches the filesystem, so a
+    // symlink sitting inside the project directory (planted by hand, or by
+    // some future generator bug) could still lexically resolve "inside" the
+    // project while its real target is anywhere on disk, e.g. reading
+    // ~/.kubeverse/settings.json's AI API key through a generated/foo ->
+    // ~/.kubeverse symlink. Resolving both sides through realpathSync (which
+    // does follow symlinks) closes that gap.
+    const realProjectPath = realpathSync(project.path);
+    const realFilePath = realpathSync(absolutePath);
+    const realWithinProject = relative(realProjectPath, realFilePath);
+    if (realWithinProject.startsWith('..') || resolve(realProjectPath, realWithinProject) !== realFilePath) {
+      return reply.code(400).send({ error: 'path escapes the project directory' });
+    }
+    return { path: relativePath, contents: readFileSync(realFilePath, 'utf8') };
   });
 }

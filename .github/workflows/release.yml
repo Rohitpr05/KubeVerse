@@ -1,0 +1,69 @@
+name: Release
+
+# The only workflow that can publish a GitHub Release, and only ever a real
+# vX.Y.Z tag can trigger it (Phase 3B, §2/§8) - an ordinary push to main or a
+# pull request (see ci.yml) never runs this file. Tags are never created or
+# pushed automatically anywhere in this repo; a human decides when to cut a
+# release, following RELEASING.md.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  # Re-run the full test suite against the exact tagged commit before
+  # building anything to publish - a tag is never trusted blindly just
+  # because it was pushed.
+  test:
+    name: Test, typecheck, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:all
+      - run: npm run typecheck:all
+      - run: npm run build:all
+
+  release:
+    name: Release (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:all
+      - name: Validate the tag matches the package version
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+      # electron-builder's GitHub publish provider (desktop/package.json's
+      # build.publish block) picks up GH_TOKEN and, given a vX.Y.Z tag,
+      # creates/updates the matching GitHub Release and uploads this OS's
+      # artifacts to it. No custom secret is required - the workflow's
+      # auto-provided GITHUB_TOKEN is sufficient for this (§18).
+      - name: Build and publish
+        run: npm run release --workspace=@kubeverse/desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate packaged artifacts
+        run: node scripts/validate-release-artifacts.js

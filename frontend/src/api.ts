@@ -105,9 +105,22 @@ export interface ExecutionResult {
 }
 
 async function asJson<T>(response: Response): Promise<T> {
-  const body = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error((body as { error?: string }).error ?? `Request failed: ${response.status}`);
-  return body;
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Request failed: ${response.status}`);
+  }
+  try {
+    return (await response.json()) as T;
+  } catch {
+    // A 2xx response that isn't actually valid JSON is never a legitimate
+    // success - it used to be silently swallowed into a fake `{}` "success"
+    // here, which is exactly what masked a real bug: a request that missed
+    // Vite's dev-server proxy list landed on Vite's own HTML SPA fallback
+    // (200 OK) instead of the real backend, and every caller of this
+    // function treated that as success with an empty body (see
+    // vite.config.ts's proxy list and its comment on /health, /live, /ready).
+    throw new Error(`Expected a JSON response but received something else (status ${response.status}).`);
+  }
 }
 
 export const api = {
@@ -119,6 +132,17 @@ export const api = {
   testConnection: () => fetch('/api/settings/test-connection', { method: 'POST' }).then((response) => asJson<{ valid: boolean; message?: string }>(response)),
 
   getEnvironment: () => fetch('/api/environment').then((response) => asJson<EnvironmentStatus>(response)),
+  // /health only ever answers once the backend has actually started
+  // listening (backend/src/server.ts) - used by the desktop first-launch
+  // checklist (OnboardingView.tsx) as the real "KubeVerse backend" signal,
+  // the same endpoint the Electron shell itself already polls before it
+  // ever loads this page (desktop/src/backendProcess.js's waitForHealth).
+  getHealth: () => fetch('/health').then((response) => asJson<{ status: string; service: string }>(response)),
+  // /ready reflects the Kubernetes OBSERVER's actual live connection state
+  // (no watch errors) - distinct from /api/environment's "kubernetes" field,
+  // which only checks that the kubectl CLI + a context exist, not that the
+  // cluster is genuinely reachable right now.
+  getReady: () => fetch('/ready').then((response) => asJson<{ status: 'ready' | 'degraded' }>(response)),
 
   listProjects: () => fetch('/api/projects').then((response) => asJson<{ projects: ProjectListEntry[] }>(response)),
   // Primary creation path: KubeVerse picks the location automatically under

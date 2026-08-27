@@ -27,7 +27,7 @@ This starts the backend (`http://localhost:4000`) and the frontend (`http://loca
 
 ## Desktop app
 
-Desktop builds are currently under development (Electron, `desktop/`) — there are no Windows/Linux downloads yet. `npm run desktop:dev` runs the same app as above inside a desktop window instead of a browser tab; see [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTER_SPEC.md)'s Phase 3 roadmap for the current state.
+Desktop builds are currently under development (Electron, `desktop/`) — there are no Windows/Linux downloads yet. `npm run desktop:dev` runs the same app as above inside a desktop window instead of a browser tab; see [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTER_SPEC.md)'s Phase 3 roadmap for the current state. Maintainers cutting an actual release should follow [`RELEASING.md`](RELEASING.md).
 
 ## Configuring an AI provider
 

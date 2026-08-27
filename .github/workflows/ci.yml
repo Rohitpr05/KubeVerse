@@ -1,0 +1,62 @@
+name: CI
+
+# Validates the repository on every push to main and every pull request
+# (Phase 3B, §3/§4) - the repository's own real commands only, nothing
+# invented. Never publishes anything: this workflow has no `contents: write`
+# permission and never runs electron-builder with --publish. Only a real
+# vX.Y.Z tag triggers release.yml, which is the only workflow that can
+# create a GitHub Release.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test, typecheck, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:all
+      - run: npm run typecheck:all
+      - run: npm run build:all
+
+  # Cross-platform packaging matrix (§4): builds the real desktop artifact on
+  # each OS's own GitHub-hosted runner - the only way to genuinely verify
+  # Windows packaging at all, since it can't be built or run on Linux. Never
+  # publishes a release; artifacts are only uploaded as short-lived workflow
+  # artifacts for inspection (§7).
+  package:
+    name: Package (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:all
+      - run: npm run package --workspace=@kubeverse/desktop
+      - name: Validate packaged artifacts
+        run: node scripts/validate-release-artifacts.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kubeverse-${{ matrix.os }}
+          path: desktop/release/KubeVerse-*
+          if-no-files-found: error
+          retention-days: 14

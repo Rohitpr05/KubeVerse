@@ -10,11 +10,51 @@
 // the plain npm package instead, which only exports the path to the
 // electron binary (for spawning it externally), leaving app/BrowserWindow
 // undefined.
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const { join } = require('node:path');
 const { existsSync } = require('node:fs');
 const { getFreePort, waitForHealth, startBackendProcess, stopBackendProcess } = require('./backendProcess.js');
 const { resolveAppPaths } = require('./appPaths.js');
+const { readSetupComplete, writeSetupComplete } = require('./setupState.js');
+const { createUpdateController } = require('./updater.js');
+
+// Electron resolves the app's userData directory from the app's *name*,
+// which for an unpackaged `electron .` run comes from this package.json's
+// own productName ("KubeVerse") - the exact same name electron-builder gives
+// the real packaged app. Without this, dev testing and the real packaged
+// install silently share one userData directory (~/.config/KubeVerse on
+// Linux) - confirmed live: completing onboarding once in `desktop:dev`
+// during earlier testing this session had already marked setup complete for
+// a packaged build that had never been run before. This rename must happen
+// before this file's own first userData path lookup below, and before
+// setupState.js/appPaths.js perform theirs - Electron does not re-resolve
+// that path after a later rename.
+if (!app.isPackaged) app.setName('KubeVerse-dev');
+// A tiny, explicit, developer/test-only reset: KUBEVERSE_RESET_SETUP=1
+// deletes the setup-completion flag before it's read, so onboarding can be
+// re-tested without hunting down and manually deleting a config file by
+// hand, and without a second, always-visible "reset" affordance in the
+// shipped product itself.
+if (process.env.KUBEVERSE_RESET_SETUP === '1') {
+  try { require('node:fs').rmSync(join(app.getPath('userData'), 'setup-state.json'), { force: true }); } catch { /* nothing to reset */ }
+}
+
+// The ONLY two privileged operations the renderer can reach at all (via
+// preload.js's narrow contextBridge) - reading/writing a single boolean
+// flag in the desktop app's own OS-appropriate app-data directory (Phase 3,
+// §6/§9). No raw filesystem, shell, or Node API is ever exposed.
+function setupStatePath() {
+  return join(app.getPath('userData'), 'setup-state.json');
+}
+ipcMain.handle('kubeverse:get-setup-complete', () => readSetupComplete(setupStatePath()));
+ipcMain.handle('kubeverse:set-setup-complete', () => { writeSetupComplete(setupStatePath(), true); return true; });
+
+// getMainWindow is a closure over the `mainWindow` variable declared below
+// (assigned once main() actually runs) - registering the updater's IPC
+// handlers here, at module scope, means Settings' "Check for Updates" works
+// the instant the renderer asks, without depending on load-order relative
+// to main().
+const updateController = createUpdateController({ app, ipcMain, getMainWindow: () => mainWindow });
 
 // Electron's own built-in "am I running from source (`electron .`) vs a
 // packaged/installed build" signal - true whenever `desktop:dev` launches
@@ -57,14 +97,32 @@ async function main() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
+    minWidth: 960,
+    minHeight: 600,
     title: 'KubeVerse',
+    // Matches the app's own dark theme background (frontend/src/styles.css)
+    // so the very first paint - before any HTML/CSS has loaded - is never a
+    // jarring white flash (Phase 3, §10).
+    backgroundColor: '#0b1220',
+    // The packaged executable/AppImage/.deb also carries an icon
+    // electron-builder bakes in at the OS level (the .desktop entry, the
+    // icon-theme install, the .exe's own resource) - but the BrowserWindow's
+    // *own* icon (what X11/Wayland window managers show in the title bar,
+    // alt-tab, and taskbar via _NET_WM_ICON, especially for an AppImage run
+    // directly rather than "installed" through a desktop launcher) is a
+    // separate thing Electron does not infer from that - confirmed live: a
+    // packaged build with this left `undefined` showed Electron's own
+    // generic default icon in the window, not KubeVerse's. build/ itself
+    // isn't copied into the packaged app (build-time-only input to
+    // electron-builder), so packaged mode reads the copy explicitly bundled
+    // via extraResources (desktop/package.json) instead.
+    icon: app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '..', 'build', 'icon.png'),
     show: false,
     webPreferences: {
       // No Node/filesystem/shell access in the renderer (Phase 3, §9) - the
       // renderer only ever talks to the local backend over plain HTTP/SSE,
-      // exactly like the browser dev workflow already does. There is
-      // currently nothing privileged the renderer needs from a preload
-      // bridge, so preload.js exists but intentionally exposes nothing yet.
+      // exactly like the browser dev workflow already does, plus the two
+      // narrow setup-completion calls preload.js exposes - nothing else.
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -79,6 +137,11 @@ async function main() {
   try {
     const targetUrl = DEV_MODE ? await waitForDevServers() : await startProductionBackend();
     await mainWindow.loadURL(targetUrl);
+    // Once per launch (§14), well after the real app has loaded - never
+    // blocking startup, and checkForUpdates() itself no-ops in dev mode.
+    // Errors (offline, no releases published yet, ...) are handled entirely
+    // inside the controller - never thrown here (§15).
+    setTimeout(() => void updateController.checkForUpdates(), 5000).unref();
   } catch (error) {
     console.error('KubeVerse backend failed to start:', error);
     await showStartupError(String(error?.message ?? error));
@@ -134,7 +197,15 @@ async function startProductionBackend() {
     // An unexpected exit *after* startup (Docker/Kubernetes going away does
     // NOT crash the backend - see kubernetes-observer.ts's reconnect loop -
     // so a real backend exit here means something actually fatal happened).
-    if (code !== null && code !== 0) console.error(`KubeVerse backend exited unexpectedly (code ${code}, signal ${signal})`);
+    // A dead backend behind an already-loaded window would otherwise just
+    // look like a silently frozen app (§11: "show a recovery UI instead of
+    // leaving the user with a broken blank application") - never an
+    // uncontrolled auto-restart loop, just an honest explanation.
+    if (code !== null && code !== 0 && backendChild) {
+      backendChild = undefined;
+      console.error(`KubeVerse backend exited unexpectedly (code ${code}, signal ${signal})`);
+      void showStartupError(`KubeVerse's local service stopped unexpectedly (exit code ${code}). Please quit and relaunch KubeVerse.`);
+    }
   });
 
   await waitForHealth({ url: `http://127.0.0.1:${port}/health`, timeoutMs: 20_000 });

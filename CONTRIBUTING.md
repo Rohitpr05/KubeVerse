@@ -82,6 +82,14 @@ cd frontend && npm run build
 
 There is currently no linter configured in this repository, so there is no lint command to run as part of your checks.
 
+**Desktop tests:**
+
+```bash
+cd desktop && npm test
+```
+
+**Re-testing first-launch onboarding:** `npm run desktop:dev` uses its own, separate app identity (`KubeVerse-dev`) from a real packaged install, so completing onboarding during development never marks a real install's onboarding complete, and vice versa - each has its own `setup-state.json` under its own `app.getPath('userData')`. To re-test the onboarding flow itself, either delete that dev-only file (`~/.config/KubeVerse-dev/setup-state.json` on Linux; the OS-equivalent `userData` location elsewhere), or launch with `KUBEVERSE_RESET_SETUP=1` set, which deletes it automatically before the app reads it - e.g. `KUBEVERSE_RESET_SETUP=1 npm run desktop:dev`. This is a developer/test-only mechanism, not exposed anywhere in the shipped product's UI.
+
 If your change touches the legacy demo application under `examples/legacy-simulator/`, see that directory's own `README.md` for how to install and test it - it is a separate, self-contained npm workspace and is not part of KubeVerse's product core.
 
 ## Pull Requests

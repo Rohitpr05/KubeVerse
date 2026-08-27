@@ -29,6 +29,16 @@ export default defineConfig({
       '/logs': BACKEND_ORIGIN,
       '/metrics': BACKEND_ORIGIN,
       '/diagnostics': BACKEND_ORIGIN,
+      // /health, /live, /ready are real backend routes (server.ts) that were
+      // missing here - in browser dev mode they silently hit Vite's own SPA
+      // fallback (200 OK, index.html) instead of the backend, and because
+      // api.ts's asJson() swallowed the resulting JSON-parse failure into a
+      // fake `{}` success (see asJson's own fix below), Settings' Kubernetes
+      // badge showed "Unavailable" forever - confirmed live, at the exact
+      // same moment the Playground showed a fully healthy, connected cluster.
+      '/health': BACKEND_ORIGIN,
+      '/live': BACKEND_ORIGIN,
+      '/ready': BACKEND_ORIGIN,
       '/api': BACKEND_ORIGIN
     }
   }

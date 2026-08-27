@@ -34,5 +34,9 @@ mkdirSync(stagingDir, { recursive: true });
 writeFileSync(join(stagingDir, 'package.json'), JSON.stringify({ name: 'kubeverse-backend-deps', private: true, dependencies }, null, 2));
 
 console.log(`Installing ${Object.keys(dependencies).length} production backend dependencies into ${stagingDir} ...`);
-execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], { cwd: stagingDir, stdio: 'inherit' });
+// Windows has no bare "npm" executable on PATH, only "npm.cmd" - execFileSync
+// (no shell) needs the real filename or it fails with ENOENT. This runs in
+// CI on windows-latest (Phase 3B's packaging matrix), not just Linux.
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+execFileSync(npmCommand, ['install', '--omit=dev', '--no-audit', '--no-fund'], { cwd: stagingDir, stdio: 'inherit' });
 console.log('Done.');

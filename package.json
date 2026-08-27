@@ -1,5 +1,6 @@
 {
   "name": "kubeverse",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
   "workspaces": ["shared", "backend", "frontend", "desktop"],
@@ -10,7 +11,10 @@
     "desktop:dev": "concurrently -n backend,frontend,electron -c cyan,magenta,yellow \"npm run dev --workspace=@kubeverse/backend\" \"npm run dev --workspace=@kubeverse/frontend\" \"npm run dev --workspace=@kubeverse/desktop\"",
     "desktop:build": "npm run build --workspace=@kubeverse/backend && npm run build --workspace=@kubeverse/frontend && npm run package --workspace=@kubeverse/desktop",
     "test": "npm run test --workspace=@kubeverse/backend",
-    "test:all": "npm run test --workspace=@kubeverse/backend && npm run test --workspace=@kubeverse/frontend && npm run test --workspace=@kubeverse/desktop"
+    "test:all": "npm run test --workspace=@kubeverse/backend && npm run test --workspace=@kubeverse/frontend && npm run test --workspace=@kubeverse/desktop",
+    "typecheck:all": "npm run typecheck --workspace=@kubeverse/backend && npm run typecheck --workspace=@kubeverse/frontend",
+    "build:all": "npm run build --workspace=@kubeverse/backend && npm run build --workspace=@kubeverse/frontend",
+    "version:set": "node scripts/set-version.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

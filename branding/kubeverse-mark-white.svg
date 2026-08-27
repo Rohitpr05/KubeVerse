@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" role="img" aria-label="KubeVerse">
+  <g fill="none" stroke="#FFFFFF" stroke-width="2.42">
+    <path d="M17 15V49"></path>
+    <path d="M17 32L45 15"></path>
+    <path d="M17 32L45 49"></path>
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="17" cy="15" r="4.2"></circle>
+    <circle cx="17" cy="49" r="4.2"></circle>
+    <circle cx="45" cy="15" r="4.2"></circle>
+    <circle cx="45" cy="49" r="4.2"></circle>
+  </g>
+  <circle cx="17" cy="32" r="6.6" fill="#FFFFFF"></circle>
+</svg>

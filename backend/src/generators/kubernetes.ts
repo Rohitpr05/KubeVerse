@@ -92,6 +92,16 @@ export function generateKubernetesManifests(spec: ArchitectureSpec, project: Pro
       const probe = { httpGet: { path: service.healthCheck.path, port: containerPort }, periodSeconds: service.healthCheck.intervalSeconds, timeoutSeconds: service.healthCheck.timeoutSeconds };
       container.readinessProbe = probe;
       container.livenessProbe = probe;
+    } else if (managed) {
+      // Managed runtimes (mongodb/redis/postgres/mysql) never speak HTTP
+      // (the NAM schema guarantees protocol:'tcp' for them - see
+      // architecture/schema.ts) - a tcpSocket probe is the most honest
+      // signal available without a fake HTTP endpoint: it only confirms the
+      // port is accepting connections, which is still real, useful readiness
+      // information (e.g. Postgres briefly refuses connections after start).
+      const probe = { tcpSocket: { port: containerPort }, periodSeconds: service.healthCheck.intervalSeconds, timeoutSeconds: service.healthCheck.timeoutSeconds };
+      container.readinessProbe = probe;
+      container.livenessProbe = probe;
     }
 
     const deployment = {

@@ -6,7 +6,10 @@ import { AIBuilderView } from './views/AIBuilderView';
 import { ArchitecturesView } from './views/ArchitecturesView';
 import { ProjectsView } from './views/ProjectsView';
 import { SettingsView } from './views/SettingsView';
+import { OnboardingView } from './views/OnboardingView';
+import { UpdateBanner } from './components/UpdateBanner';
 import { api, type ProjectSummary } from './api';
+import { getSetupComplete, isDesktopApp } from './desktop';
 
 const CURRENT_PROJECT_KEY = 'kubeverse.currentProjectId';
 
@@ -16,6 +19,21 @@ export function App() {
   const [installationId, setInstallationId] = useState<string>();
   const [currentProject, setCurrentProjectState] = useState<ProjectSummary>();
   const [restoredProject, setRestoredProject] = useState(false);
+  // First-launch onboarding (Phase 3, §2/§6) is desktop-only and gates
+  // everything else below it. Three states, not two: `undefined` means "the
+  // persisted flag hasn't been read yet" - deliberately distinct from
+  // `false`, so a *returning* desktop user (setupComplete already true on
+  // disk) never sees so much as a flash of the onboarding screen while this
+  // resolves. Browser dev mode short-circuits straight to `true` and never
+  // calls the (desktop-only) bridge at all.
+  const [setupComplete, setSetupComplete] = useState<boolean | undefined>(() => (isDesktopApp() ? undefined : true));
+
+  useEffect(() => {
+    if (!isDesktopApp()) return;
+    let cancelled = false;
+    void getSetupComplete().then((complete) => { if (!cancelled) setSetupComplete(complete); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,8 +67,16 @@ export function App() {
     else window.localStorage.removeItem(CURRENT_PROJECT_KEY);
   }
 
+  // Still reading the persisted flag (desktop only, and only for a brief
+  // moment right after the window loads) - render nothing rather than a
+  // flash of either the onboarding screen or the real app shell.
+  if (setupComplete === undefined) return null;
+
+  if (!setupComplete) return <OnboardingView onContinue={() => setSetupComplete(true)} />;
+
   return (
     <main className="app-shell">
+      {isDesktopApp() && <UpdateBanner />}
       <TopBar backendOnline={backendOnline} installationId={installationId} currentProject={currentProject} onSwitchProject={() => setView('projects')} />
       <div className="shell-body">
         <Sidebar active={view} onSelect={setView} />

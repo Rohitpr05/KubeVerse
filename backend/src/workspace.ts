@@ -3,7 +3,7 @@
 // project content anywhere else; the ~/.kubeverse recent-projects index below
 // holds only paths, as a convenience MRU list, not a source of truth.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { kubeversePath, projectsRoot } from './local/paths.js';
 import { uuidv7 } from './local/uuidv7.js';
 import type { ArchitectureSpec } from './architecture/schema.js';
@@ -134,7 +134,12 @@ export function openOrCreateProject(inputPath: string, name?: string): ProjectSu
   } else {
     metadata = {
       projectId: uuidv7(),
-      name: name?.trim() || projectPath.split('/').filter(Boolean).pop() || 'project',
+      // resolve()'s output uses the OS's own separator ('\' on Windows) -
+      // splitting on a hardcoded '/' would return the entire absolute path
+      // as the project name on Windows instead of just the trailing
+      // directory name. basename() is the cross-platform-correct way to get
+      // the last path segment regardless of separator.
+      name: name?.trim() || basename(projectPath) || 'project',
       createdAt: new Date().toISOString(),
       schemaVersion: 1,
     };

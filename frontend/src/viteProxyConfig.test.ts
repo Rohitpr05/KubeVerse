@@ -27,3 +27,24 @@ test('the proxy config covers every route the Playground actually depends on', (
     assert.ok(path in proxy, `expected a proxy rule for ${path}`);
   }
 });
+
+// Regression test for a real bug, reproduced live: /health, /ready, and
+// /live are real backend routes (server.ts) that api.ts calls directly
+// (getHealth/getReady, used by SettingsView and OnboardingView), but they
+// were missing from this proxy list entirely. In browser dev mode, a
+// request to an unproxied path silently hits Vite's own SPA fallback (200
+// OK, index.html) instead of the backend - and since that "succeeded" with
+// a 200 status, it was NOT caught as a network error. It surfaced instead as
+// Settings' Kubernetes badge permanently showing "Unavailable" even while
+// the Playground, at the very same moment, showed a fully healthy, connected
+// cluster - because the non-JSON body silently resolved to `{}` (see
+// api.ts's asJson, separately hardened not to do that any more). This test
+// enumerates every top-level path any api.ts call actually fetches (not just
+// the Playground's), so a future new route missing from this list fails
+// here instead of silently misbehaving in the browser.
+test('the proxy config covers every top-level path api.ts actually fetches, not just the Playground\'s', () => {
+  const proxy = config.server?.proxy ?? {};
+  for (const path of ['/snapshot', '/graph', '/events', '/resources', '/resource', '/timeline', '/logs', '/metrics', '/diagnostics', '/health', '/live', '/ready', '/api']) {
+    assert.ok(path in proxy, `expected a proxy rule for ${path}`);
+  }
+});

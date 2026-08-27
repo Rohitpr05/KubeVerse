@@ -433,13 +433,17 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
         </div>
       ) : (
         <>
-        {snapshot.observerErrors.length > 0 && <div className="observer-warning">Observer: {snapshot.observerErrors.at(-1)}</div>}
+        {snapshot.observerErrors.length > 0 && <div className="observer-warning" role="status" aria-live="polite">Observer: {snapshot.observerErrors.at(-1)}</div>}
         {error ? (
-          <div className="observer-warning">⚠ Unable to refresh cluster state - retrying… ({error})</div>
+          <div className="observer-warning" role="status" aria-live="polite">⚠ Unable to refresh cluster state - retrying… ({error})</div>
         ) : (!currentProject || updating) && (
-          <div className="observer-warning updating">{!currentProject ? 'Reconnecting to project…' : 'Updating cluster state…'}</div>
+          <div className="observer-warning updating" role="status" aria-live="polite">{!currentProject ? 'Reconnecting to project…' : 'Updating cluster state…'}</div>
         )}
-        {labError && <div className="observer-warning error" onClick={() => setLabError(undefined)}>⚠ {labError} (click to dismiss)</div>}
+        {labError && (
+          <button type="button" className="observer-warning error dismissible" role="status" aria-live="assertive" onClick={() => setLabError(undefined)}>
+            ⚠ {labError} (click to dismiss)
+          </button>
+        )}
         <div className="playground-body">
         <section className={`explorer-layout ${inspectorCollapsed ? 'inspector-collapsed' : ''}`}>
           <div className="canvas" ref={canvasRef}>
@@ -468,6 +472,7 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
               className="side-panel-toggle"
               onClick={() => setInspectorCollapsed((current) => !current)}
               title={inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector'}
+              aria-label={inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector'}
             >
               {inspectorCollapsed ? '‹' : '›'}
             </button>

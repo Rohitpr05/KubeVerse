@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 
 // Lab Controls as a slide-over drawer, not a permanent third column
@@ -19,6 +20,16 @@ import type { ReactNode } from 'react';
 // never get destroyed by opening/closing - only its `translateX` and
 // `aria-hidden` change.
 export function LabDrawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  // Matches PopoverDropdown's existing Escape-to-close pattern - only
+  // listens while actually open, so it never interferes with Escape doing
+  // something else (e.g. deselecting a Playground node) while closed.
+  useEffect(() => {
+    if (!open) return;
+    const onEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onEscape);
+    return () => document.removeEventListener('keydown', onEscape);
+  }, [open, onClose]);
+
   return createPortal(
     <aside className={`lab-drawer ${open ? 'open' : ''}`} aria-hidden={!open} aria-label="Lab Controls">
       <div className="lab-drawer-header">

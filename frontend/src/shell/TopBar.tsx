@@ -1,4 +1,5 @@
 import type { ProjectSummary } from '../api';
+import kubeverseMark from '../assets/kubeverse-mark-on-dark.svg';
 
 export function TopBar({ backendOnline, installationId, currentProject, onSwitchProject }: {
   backendOnline: boolean;
@@ -9,7 +10,7 @@ export function TopBar({ backendOnline, installationId, currentProject, onSwitch
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <div className="brand"><strong>KubeVerse</strong></div>
+        <div className="brand"><img src={kubeverseMark} alt="" width={20} height={20} className="brand-mark" /><strong>KubeVerse</strong></div>
         <button className="project-chip" onClick={onSwitchProject} title={currentProject?.path ?? 'No project open'}>
           {currentProject ? <>Project: <strong>{currentProject.name}</strong></> : 'No project open'}
         </button>

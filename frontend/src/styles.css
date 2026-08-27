@@ -21,7 +21,9 @@ button, input, select { font: inherit; }
 .app-shell { position: relative; height: 100dvh; min-height: 0; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: #0b1120; }
 .topbar { display: flex; min-width: 0; justify-content: space-between; align-items: center; gap: 18px; padding: 0 18px; background: #0f172a; border-bottom: 1px solid #26354b; }
 .topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.topbar .brand { display: flex; align-items: center; gap: 8px; }
 .topbar .brand strong { font-size: 1.05rem; letter-spacing: .01em; }
+.topbar .brand-mark { display: block; flex: none; }
 .topbar-right { display: flex; align-items: center; gap: 14px; }
 .project-chip { border: 1px solid #26354b; border-radius: 999px; background: #142036; color: #c5d3e4; font-size: .74rem; padding: 5px 12px; cursor: pointer; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-chip:hover { background: #1a2740; }
@@ -30,6 +32,11 @@ button, input, select { font: inherit; }
 .connection { display: flex; align-items: center; gap: 7px; color: #c5d3e4; font-size: .78rem; white-space: nowrap; }.connection strong { color: #f1f5f9; font-weight: 650; }.online-dot, .offline-dot { width: 8px; height: 8px; border-radius: 50%; }.online-dot { background: #34d399; box-shadow: 0 0 0 3px #34d39922; }.offline-dot { background: #f97316; }
 .observer-warning { z-index: 30; background: #7c2d12; color: #ffedd5; padding: 6px 18px; font-size: .78rem; }
 .observer-warning.updating { background: #14304f; color: #cfe4ff; }
+/* The dismissible lab-error banner is a real <button> (keyboard-operable,
+   Enter/Space dismiss), not a mouse-only div - this resets native button
+   chrome so it still reads as the same plain warning strip. */
+.observer-warning.dismissible { display: block; width: 100%; text-align: left; border: 0; font: inherit; cursor: pointer; }
+.observer-warning.dismissible:hover, .observer-warning.dismissible:focus-visible { background: #8a3418; }
 .shell-body { min-height: 0; display: grid; grid-template-columns: 190px minmax(0, 1fr); }
 .sidebar { min-height: 0; display: flex; flex-direction: column; justify-content: space-between; background: #0f172a; border-right: 1px solid #26354b; padding: 14px 10px; }
 .sidebar-heading { margin: 4px 8px 8px; color: #6c7d94; font-size: .66rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
@@ -392,3 +399,38 @@ dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-s
 @media (max-width: 1300px) { .explorer-layout { grid-template-columns: minmax(0, 1fr) 310px; }.activity-panel { flex: 1; } }
 @media (max-width: 1050px) { .explorer-layout { grid-template-columns: minmax(0, 1fr) 310px; }.side-panel { font-size: .95em; }.counters { display: none; }.shell-body { grid-template-columns: 160px minmax(0, 1fr); }.run-actions { grid-template-columns: 1fr; }.generated-file-browser { grid-template-columns: 1fr; }.activity-strip:not(.all-collapsed) { flex-direction: column; max-height: none; }.activity-panel { border-right: 0; border-bottom: 1px solid #26354b; } }
 @media (max-width: 760px) { body { overflow: auto; }.shell-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }.sidebar { flex-direction: row; flex-wrap: wrap; }.sidebar-footer { margin-left: auto; }.explorer-layout { display: flex; flex-direction: column; }.canvas { height: 65dvh; min-height: 480px; }.lab-drawer { width: min(300px, 86vw); }.side-panel { max-height: none; border-left: 0; border-top: 1px solid #26354b; }.controls-panel { flex-wrap: wrap; }.controls-panel input { width: 155px; }.install-id { display: none; }.connection strong { display: none; }.project-chip { max-width: 160px; }.view-header-row { flex-wrap: wrap; } }
+
+/* --- Phase 3: desktop first-launch onboarding (OnboardingView.tsx) ---
+   Desktop-only (App.tsx gates this on isDesktopApp()); reuses the same dark
+   theme tokens as the rest of the app rather than a separate visual
+   language. */
+.onboarding-view { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #0b1120; }
+.onboarding-card { width: min(420px, 92vw); text-align: center; padding: 32px 28px; border: 1px solid #26354b; border-radius: 12px; background: #0f172a; }
+.onboarding-logo { border-radius: 14px; margin-bottom: 14px; }
+.onboarding-card h1 { margin: 0; font-size: 1.3rem; }
+.onboarding-tagline { margin: 2px 0 16px; color: #8798ac; font-size: .78rem; }
+.onboarding-checklist { list-style: none; margin: 18px 0 0; padding: 0; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+.onboarding-check { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 7px; background: #0b1322; border: 1px solid #1d2b3e; }
+.onboarding-check-icon { flex: none; width: 18px; text-align: center; font-weight: 700; }
+.onboarding-check.status-ok .onboarding-check-icon { color: #6ee7b7; }
+.onboarding-check.status-unavailable .onboarding-check-icon { color: #fca5a5; }
+.onboarding-check.status-checking .onboarding-check-icon { color: #9eafc3; }
+.onboarding-check-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.onboarding-check-label { font-size: .84rem; font-weight: 600; color: #e2e8f0; }
+.onboarding-check-detail { font-size: .72rem; color: #9eafc3; overflow-wrap: anywhere; }
+.onboarding-actions { justify-content: center; margin-top: 20px; }
+.onboarding-continue { background: #1d4ed8; border-color: #1d4ed8; color: #f8fafc; }
+.onboarding-continue:hover { background: #2563eb; }
+.onboarding-blocker { margin-top: 12px; }
+
+/* --- Phase 3B: desktop auto-update banner (UpdateBanner.tsx) ---
+   Persistent, non-modal strip above the TopBar - never a full-page
+   takeover, matching "do not force updates / do not interrupt an active
+   simulation" (Phase 3B, §12). */
+.update-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 18px; background: #12305c; border-bottom: 1px solid #1d4ed8; flex-wrap: wrap; }
+.update-banner-text { display: flex; flex-direction: column; gap: 1px; font-size: .78rem; }
+.update-banner-text strong { color: #e8f0ff; font-size: .82rem; }
+.update-banner-actions { display: flex; align-items: center; gap: 10px; }
+.update-banner-actions button:not(.link-button) { background: #1d4ed8; border-color: #1d4ed8; color: #f8fafc; border-radius: 5px; padding: 6px 12px; font-size: .78rem; cursor: pointer; }
+.update-banner-actions button:not(.link-button):hover { background: #2563eb; }
+.update-banner-actions button:disabled { opacity: .6; cursor: not-allowed; }

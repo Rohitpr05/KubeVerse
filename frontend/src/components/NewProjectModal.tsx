@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, type ProjectSummary } from '../api';
 
@@ -9,6 +9,17 @@ export function NewProjectModal({ onClose, onCreated }: { onClose: () => void; o
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string>();
+
+  // The input's own onKeyDown already handles Escape while it's focused
+  // (below) - this document-level listener covers Escape after the user has
+  // Tab'd away from the input (e.g. onto Cancel/Create), which previously
+  // did nothing at all.
+  useEffect(() => {
+    if (creating) return;
+    const onEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onEscape);
+    return () => document.removeEventListener('keydown', onEscape);
+  }, [creating, onClose]);
 
   async function create() {
     const trimmed = name.trim();
@@ -43,7 +54,7 @@ export function NewProjectModal({ onClose, onCreated }: { onClose: () => void; o
           />
         </label>
         <p className="muted">KubeVerse creates a local project folder for this automatically - you don't need to choose a location.</p>
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
         <div className="settings-actions modal-actions">
           <button onClick={onClose} disabled={creating}>Cancel</button>
           <button onClick={() => void create()} disabled={creating || !name.trim()}>{creating ? 'Creating…' : 'Create'}</button>

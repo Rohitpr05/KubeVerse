@@ -56,6 +56,22 @@ test('createProject creates the project under the dedicated projects workspace, 
   assert.ok(existsSync(join(project.path, '.kubeverse', 'metadata.json')));
 });
 
+// Regression test: openOrCreateProject's no-name fallback used to split the
+// resolved absolute path on a hardcoded '/', which would return the ENTIRE
+// path as the project name on Windows (where resolve() uses '\'), instead of
+// just the trailing directory segment. path.basename() is correct regardless
+// of the OS path separator.
+test('openOrCreateProject falls back to the directory\'s own trailing name segment when no name is given', () => {
+  const parent = mkdtempSync(join(tmpdir(), 'kubeverse-project-'));
+  try {
+    const projectDir = join(parent, 'my-cool-project');
+    const project = openOrCreateProject(projectDir);
+    assert.equal(project.name, 'my-cool-project');
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
 test('createProject turns an arbitrary project name into a safe, readable directory name', () => {
   const project = createProject('My   Bakery / Shop*Name');
   assert.equal(project.path, join(projectsRoot(), 'My Bakery Shop Name'));

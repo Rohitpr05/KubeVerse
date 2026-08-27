@@ -128,6 +128,35 @@ test('the Ingress name is sanitized into a valid RFC 1123 name even when spec.na
   assert.match(ingress.metadata.name, /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/, `Ingress name must be a valid RFC 1123 name: ${ingress.metadata.name}`);
 });
 
+// Regression test for a real production bug, reproduced live: a generated
+// Redis Deployment had an httpGet probe on port 6379 (Redis's raw wire
+// protocol port), which crash-looped the Pod forever - Redis's own
+// cross-protocol-scripting defense drops the connection on an HTTP request,
+// so both the readiness and liveness probes failed every single time. The
+// schema now forces protocol:'tcp' for every managed runtime
+// (architecture/schema.ts), so this asserts the generator's corresponding
+// half of the fix: a managed-runtime Deployment gets a tcpSocket probe, never
+// an httpGet one.
+test('a managed-runtime service (protocol: tcp) gets a tcpSocket probe, never an httpGet probe', () => {
+  const files = generateKubernetesManifests(spec, project);
+  const deploymentFile = files.find((file) => file.path === 'kubernetes/db/deployment.yaml');
+  const deployment = parse(deploymentFile!.contents) as any;
+  const container = deployment.spec.template.spec.containers[0];
+  assert.equal(container.readinessProbe.tcpSocket.port, 5432);
+  assert.equal(container.livenessProbe.tcpSocket.port, 5432);
+  assert.equal(container.readinessProbe.httpGet, undefined);
+  assert.equal(container.livenessProbe.httpGet, undefined);
+});
+
+test('an http-protocol service still gets an httpGet probe (unchanged behavior)', () => {
+  const files = generateKubernetesManifests(spec, project);
+  const deploymentFile = files.find((file) => file.path === 'kubernetes/backend/deployment.yaml');
+  const deployment = parse(deploymentFile!.contents) as any;
+  const container = deployment.spec.template.spec.containers[0];
+  assert.equal(container.readinessProbe.httpGet.path, '/health');
+  assert.equal(container.readinessProbe.httpGet.port, 4000);
+});
+
 test('two different projects that happen to produce identically-named services get distinct ownership label values', () => {
   const projectA = { id: '01a037bf-0000-7000-a000-000000000001', name: 'shop' };
   const projectB = { id: '01a037bf-0000-7000-a000-000000000002', name: 'shop' };

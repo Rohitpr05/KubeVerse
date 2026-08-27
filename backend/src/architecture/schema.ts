@@ -82,27 +82,43 @@ const envSchema = z
   .preprocess(toEnvEntries, z.array(envEntrySchema))
   .transform((entries): Record<string, string> => Object.fromEntries(entries.map((entry): [string, string] => [entry.key, entry.value])));
 
-export const serviceSpecSchema = z.object({
-  name: z.string().regex(/^[a-z][a-z0-9-]*$/, 'service name must be lowercase kebab-case'),
-  type: serviceTypeSchema,
-  runtime: runtimeSchema,
-  port: z.number().int().min(1).max(65535),
-  protocol: withDefault(protocolSchema, 'http'),
-  command: optionalNullable(z.string()),
-  env: envSchema,
-  dependsOn: withDefault(z.array(z.string()), []),
-  replicas: withDefault(z.number().int().min(1).max(10), 1),
-  resources: withDefault(
-    z.object({
-      requests: withDefault(resourceQuantitySchema, { cpu: '250m', memory: '256Mi' }),
-      limits: withDefault(resourceQuantitySchema, { cpu: '250m', memory: '256Mi' }),
-    }),
-    { requests: { cpu: '250m', memory: '256Mi' }, limits: { cpu: '250m', memory: '256Mi' } },
-  ),
-  healthCheck: withDefault(healthCheckSchema, { path: '/health', intervalSeconds: 10, timeoutSeconds: 3 }),
-  volume: optionalNullable(volumeSchema),
-  expose: withDefault(z.boolean(), false),
-});
+// mongodb/redis/postgres/mysql speak their own wire protocol, never HTTP -
+// there is exactly one physically correct `protocol` for them. Modeling this
+// as a hard validation error would make Compile fail every time the AI
+// simply omits `protocol` on a database service (the common case, since
+// `protocol` defaults to 'http' - a sensible default for the much more
+// common `runtime: 'node'` case, but wrong here). Instead this is corrected
+// the same way an unset field already is - structurally, not by rejection -
+// so it is impossible for a managed runtime to end up with an HTTP probe
+// generated against it (generators/kubernetes.ts, generators/nodeService.ts),
+// which previously crash-looped the Pod in a live cluster (confirmed: an
+// httpGet probe against Redis triggers Redis's own cross-protocol-scripting
+// defense and gets the container killed on every liveness check).
+const managedRuntimes = new Set<z.infer<typeof runtimeSchema>>(['mongodb', 'redis', 'postgres', 'mysql']);
+
+export const serviceSpecSchema = z
+  .object({
+    name: z.string().regex(/^[a-z][a-z0-9-]*$/, 'service name must be lowercase kebab-case'),
+    type: serviceTypeSchema,
+    runtime: runtimeSchema,
+    port: z.number().int().min(1).max(65535),
+    protocol: withDefault(protocolSchema, 'http'),
+    command: optionalNullable(z.string()),
+    env: envSchema,
+    dependsOn: withDefault(z.array(z.string()), []),
+    replicas: withDefault(z.number().int().min(1).max(10), 1),
+    resources: withDefault(
+      z.object({
+        requests: withDefault(resourceQuantitySchema, { cpu: '250m', memory: '256Mi' }),
+        limits: withDefault(resourceQuantitySchema, { cpu: '250m', memory: '256Mi' }),
+      }),
+      { requests: { cpu: '250m', memory: '256Mi' }, limits: { cpu: '250m', memory: '256Mi' } },
+    ),
+    healthCheck: withDefault(healthCheckSchema, { path: '/health', intervalSeconds: 10, timeoutSeconds: 3 }),
+    volume: optionalNullable(volumeSchema),
+    expose: withDefault(z.boolean(), false),
+  })
+  .transform((service) => (managedRuntimes.has(service.runtime) ? { ...service, protocol: 'tcp' as const } : service));
 
 export const trafficEdgeSchema = z.object({
   from: z.string(),
