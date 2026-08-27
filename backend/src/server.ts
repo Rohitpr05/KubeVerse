@@ -1,6 +1,7 @@
 // The platform API is intentionally read-only: it projects Kubernetes state and streams incremental observations.
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import staticFiles from '@fastify/static';
 import type { ServerResponse } from 'node:http';
 import type { ClusterResource, ClusterUpdate, TimelineEvent } from '@kubeverse/shared';
 import { ClusterState } from './cluster-state.js';
@@ -111,6 +112,21 @@ app.get('/events', (request, reply) => {
   const heartbeat = setInterval(() => response.write(': keepalive\n\n'), 15_000);
   request.raw.on('close', () => { clearInterval(heartbeat); clients.delete(response); unsubscribeLab?.(); });
 });
+
+// PLATFORM_STATIC_DIR (Phase 3, desktop app): when set, serves the built
+// frontend (frontend/dist) from this same backend/origin, so the desktop
+// shell can point its window straight at http://127.0.0.1:<port>/ and every
+// existing relative fetch()/EventSource call in the frontend (/snapshot,
+// /api/*, ...) resolves to this same server with zero frontend code changes -
+// the same same-origin illusion Vite's dev proxy already gives it today.
+// Unset by default, so ordinary `npm run dev`/tests are completely
+// unaffected; only desktop/src/backendProcess.js ever sets this env var.
+// Registered last: @fastify/static's catch-all only ever serves a request no
+// route above already claimed - Fastify's router resolves by specificity,
+// not registration order, so this can never shadow a real API route.
+if (process.env.PLATFORM_STATIC_DIR) {
+  await app.register(staticFiles, { root: process.env.PLATFORM_STATIC_DIR });
+}
 
 try { await observer.start(); }
 catch (error) { state.recordError(`Observer startup failed: ${error instanceof Error ? error.message : String(error)}`); app.log.error(error, 'observer startup failed'); }

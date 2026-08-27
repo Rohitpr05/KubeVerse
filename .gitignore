@@ -6,3 +6,8 @@ coverage/
 dist/
 *.log
 .DS_Store
+
+# Desktop (Phase 3): electron-builder output and the staged production-only
+# backend node_modules prepare-backend-deps.js generates before packaging.
+desktop/release/
+desktop/.stage/

@@ -25,6 +25,10 @@ This starts the backend (`http://localhost:4000`) and the frontend (`http://loca
 - `npm run dev:backend` / `npm run dev:frontend` — run either half alone.
 - `npm test` — runs the backend's unit tests (NAM schema validation, the generators, local identity).
 
+## Desktop app
+
+Desktop builds are currently under development (Electron, `desktop/`) — there are no Windows/Linux downloads yet. `npm run desktop:dev` runs the same app as above inside a desktop window instead of a browser tab; see [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTER_SPEC.md)'s Phase 3 roadmap for the current state.
+
 ## Configuring an AI provider
 
 Open the app, go to **Settings**, choose a model, and paste an OpenRouter API key. **Save**, then **Test Connection** to confirm it's valid. The key is stored at `~/.kubeverse/settings.json` with owner-only file permissions — never in this repository, never committed, never sent anywhere but OpenRouter. This is a documented development-mode fallback; see the master spec's §7 for the planned production (OS keychain) design.

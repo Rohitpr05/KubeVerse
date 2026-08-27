@@ -2,12 +2,15 @@
   "name": "kubeverse",
   "private": true,
   "type": "module",
-  "workspaces": ["shared", "backend", "frontend"],
+  "workspaces": ["shared", "backend", "frontend", "desktop"],
   "scripts": {
     "dev": "concurrently -n backend,frontend -c cyan,magenta \"npm run dev --workspace=@kubeverse/backend\" \"npm run dev --workspace=@kubeverse/frontend\"",
     "dev:backend": "npm run dev --workspace=@kubeverse/backend",
     "dev:frontend": "npm run dev --workspace=@kubeverse/frontend",
-    "test": "npm run test --workspace=@kubeverse/backend"
+    "desktop:dev": "concurrently -n backend,frontend,electron -c cyan,magenta,yellow \"npm run dev --workspace=@kubeverse/backend\" \"npm run dev --workspace=@kubeverse/frontend\" \"npm run dev --workspace=@kubeverse/desktop\"",
+    "desktop:build": "npm run build --workspace=@kubeverse/backend && npm run build --workspace=@kubeverse/frontend && npm run package --workspace=@kubeverse/desktop",
+    "test": "npm run test --workspace=@kubeverse/backend",
+    "test:all": "npm run test --workspace=@kubeverse/backend && npm run test --workspace=@kubeverse/frontend && npm run test --workspace=@kubeverse/desktop"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

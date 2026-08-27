@@ -49,11 +49,12 @@ Generated source, Dockerfiles, Compose configuration, and Kubernetes manifests a
 backend/                    Fastify TypeScript app: Kubernetes observer + KubeVerse product routes
 frontend/                   React + TypeScript + Vite + React Flow app shell
 shared/                     @kubeverse/shared - the backend<->frontend Kubernetes contract only
+desktop/                    @kubeverse/desktop - Electron shell (Phase 3): owns local backend lifecycle, packaging
 examples/legacy-simulator/  LEGACY/DEMO - the original Gateway/Validation/Security/OCR simulator (self-contained)
 docs/                       Architecture notes (mostly scoped to the observer/explorer)
 ```
 
-The root is an npm workspace (`shared`, `backend`, `frontend`). `npm run dev` starts the backend and Vite frontend together. `examples/legacy-simulator/` is its own independent npm workspace root - it does not participate in the root install and has no dependency on KubeVerse core.
+The root is an npm workspace (`shared`, `backend`, `frontend`, `desktop`). `npm run dev` starts the backend and Vite frontend together for browser development (unchanged by Phase 3); `npm run desktop:dev` additionally launches the Electron shell against those same dev servers; `npm run desktop:build` produces a production backend bundle, a production frontend build, and a packaged desktop artifact. `examples/legacy-simulator/` is its own independent npm workspace root - it does not participate in the root install and has no dependency on KubeVerse core.
 
 ### 4.2 Backend (`backend/`) - CURRENT
 
@@ -198,7 +199,7 @@ I -> A -> M is CURRENT (§4.4). M -> G -> D/K is CURRENT (§4.5). D/K -> R/C is 
 
 **CURRENT**: AI access is bring-your-own-key, OpenRouter only, entered in Settings. The key is stored at `~/.kubeverse/settings.json` with `0o600` permissions - a documented development fallback, never committed to the project repository (outside `~/.kubeverse` entirely), never echoed back by any API response (`GET /api/settings` returns `hasApiKey: boolean` only), and only injected into the OpenRouter request at compile time.
 
-**PLANNED**: production desktop builds must move credential storage to OS keychain storage (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux) via the eventual Tauri shell, not a plaintext file. Additional providers (OpenAI, Anthropic, local Ollama, other OpenAI-compatible endpoints) can be added by implementing the existing `AiProvider` interface without touching the compiler or routes. Firebase Authentication / Google login for optional account identity is PLANNED and not implemented - no Firebase project or credential exists in this codebase; KubeVerse's installation identity (§6.2) does not depend on it.
+**PLANNED**: production desktop builds must move credential storage to OS keychain storage (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux) via the desktop shell, not a plaintext file - not yet implemented in Phase 3A; `~/.kubeverse/settings.json` is still the actual storage even under the desktop app today (Phase 3 only changed the *location* the desktop app points it to, per §5's OS-idiomatic-paths note in the Phase 3 roadmap - the storage *mechanism* is unchanged). Additional providers (OpenAI, Anthropic, local Ollama, other OpenAI-compatible endpoints) can be added by implementing the existing `AiProvider` interface without touching the compiler or routes. Firebase Authentication / Google login for optional account identity is PLANNED and not implemented - no Firebase project or credential exists in this codebase; KubeVerse's installation identity (§6.2) does not depend on it.
 
 ## 8. Docker and Kubernetes generation
 
@@ -250,7 +251,9 @@ Unchanged from the prior spec's design direction. Not implemented.
 
 The prior spec sequenced the architecture compiler and Docker/Kubernetes generation *after* the simulation/experiment engine, metrics integration, traffic generation, HPA, and failure experiments. **This milestone deliberately reorders that sequence**: the architecture compiler, NAM schema, and generators were built now, ahead of the simulation engine, per direct product decision - the reasoning being that the compiler/generator pipeline is how a user creates something worth exploring in the first place, and is independently valuable and shippable without the playground.
 
-Explicitly not built in this milestone (unchanged non-goals, FUTURE): HPA, traffic simulator, Pod/OOM failure simulation, kube-proxy/scheduler/rollout visualization, replay, learning/tutorial engine, community sharing, instructor mode. Also explicitly deferred by product decision rather than by default non-goal: a Tauri desktop shell scaffold (no Rust toolchain was available to build- or syntax-verify one during this milestone; the frontend/backend are already structured to drop into one - a standalone Vite SPA and a standalone local backend process - see §2 of the prior spec's desktop-shell direction), Firebase/Google authentication (§7), and any UI-wired "build/deploy" action (the abstractions exist per §4.6, but wiring them into a Playground UI is explicitly the next milestone's work, not this one's).
+Explicitly not built in this milestone (unchanged non-goals, FUTURE, at the time this Phase 1 section was written): HPA, traffic simulator, Pod/OOM failure simulation, kube-proxy/scheduler/rollout visualization, replay, learning/tutorial engine, community sharing, instructor mode. Also explicitly deferred by product decision rather than by default non-goal at that time: a Tauri desktop shell scaffold (no Rust toolchain was available to build- or syntax-verify one during this milestone; the frontend/backend are already structured to drop into one - a standalone Vite SPA and a standalone local backend process - see §2 of the prior spec's desktop-shell direction), Firebase/Google authentication (§7), and any UI-wired "build/deploy" action (the abstractions exist per §4.6, but wiring them into a Playground UI is explicitly the next milestone's work, not this one's).
+
+**Update (Phase 2, Phase 3)**: the traffic simulator, Pod/OOM failure simulation, and the UI-wired build/deploy action were all built in Phase 2 (`phase2_v2.3.0`). A desktop shell was built in Phase 3, but as **Electron**, not Tauri: the Rust-toolchain gap noted above was still unresolved when Phase 3 began, and rather than ship unverified Tauri scaffolding, Electron was chosen specifically because it could be built, packaged, and actually run in the implementing environment. Tauri remains a plausible future revisit if a Rust toolchain becomes available and the smaller-binary/lower-resource tradeoff becomes worth a rewrite of the desktop shell (not the React/Fastify core, which either desktop framework wraps unchanged). See §18 for the full phase roadmap.
 
 ## 15. Developer and contributor architecture
 
@@ -294,3 +297,30 @@ flowchart LR
 5. How is it constrained to local projects/namespaces and cleaned up?
 6. What stable shared contract (`@kubeverse/shared`, the NAM schema, the `AiProvider` interface) is introduced or changed?
 7. How can a user inspect and understand the resulting artifacts and outcomes before anything executes?
+
+## 18. Roadmap
+
+### Phase 1 - Core Application
+
+Project architecture, project generation, Docker/Kubernetes integration, core foundation (§4.4-§4.6).
+
+**Status: Complete.**
+
+### Phase 2 - Playground & Simulation
+
+Kubernetes topology, deterministic layout, drag/lock/Auto Layout, MiniMap, live timeline, traffic readiness, traffic simulation (1 visual dot = 10 real requests, edge-following particles that ride the real rendered React Flow SVG path), Pod failure visualization, real Kubernetes self-healing (a real Pod deletion, observed converging via the real observer/SSE stream - never a fabricated replacement), Docker host-port allocation, Kubernetes reconnect resilience.
+
+**Status: Complete - `phase2_v2.3.0`.**
+
+### Phase 3 - Desktop Application
+
+- **3A (this milestone) - CURRENT, in progress:** Electron desktop shell (`desktop/`) that owns the local backend process's lifecycle (spawn, real `/health`-based readiness wait, clean SIGTERM-then-SIGKILL shutdown, single-instance lock); a production backend build (`backend/esbuild.config.js`, bundling first-party source, leaving real npm dependencies external); the backend optionally serving the built frontend from its own origin (`PLATFORM_STATIC_DIR`) so the desktop window's relative `fetch()`/`EventSource` calls need no code changes; OS-idiomatic config/project paths via Electron's `app.getPath()` (`desktop/src/appPaths.js`) *without* changing the browser dev-mode defaults (`~/.kubeverse`, `~/KubeVerse` are untouched); a minimal, isolated (`contextIsolation`, no `nodeIntegration`, empty preload bridge) renderer security boundary; Linux packaging (AppImage verified end-to-end as a real, standalone, extracted-and-run artifact; `.deb` configured but blocked on real maintainer-email/homepage metadata only a project owner can supply - see the Phase 3 audit's Limitations); Windows packaging (NSIS) configured but not yet built/verified in the implementing environment (no Windows host or reliable Wine cross-build path was available).
+- **3B - PLANNED, not yet built:** OS keychain credential storage (replacing the plaintext `~/.kubeverse/settings.json`, per §7); a first-run environment-checklist UI inside the React app (reusing the existing `/api/environment` route - not a new observer); an explicit, user-triggered migration path from the browser dev-mode `~/.kubeverse`/`~/KubeVerse` locations to the desktop app's OS-idiomatic ones (deliberately not automatic/silent); auto-update wiring (`electron-updater` against signed GitHub Releases artifacts); a real CI pipeline building Windows/Linux artifacts on tag push; a real application icon and other branding assets (none exist in this repository today - Phase 3A did not fabricate placeholder branding).
+
+### Phase 4 - Product & Identity (FUTURE)
+
+Potential future work: Google sign-in, user identity, secure credential storage, account/preferences, onboarding. Not implemented; no Firebase project or OAuth credential exists in this codebase (§7).
+
+### Phase 5 - Optional Collaboration / Cloud (FUTURE)
+
+Potential future work: sharing, collaboration, optional cloud synchronization. KubeVerse remains local-first by default per §3.1; none of this is implemented, and signing in (Phase 4) must never imply uploading local project/Docker/Kubernetes data without explicit, separate user action.
