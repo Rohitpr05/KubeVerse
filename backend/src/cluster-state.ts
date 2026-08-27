@@ -34,6 +34,16 @@ function workloadStatus(raw: KubernetesObject): string {
 }
 
 function podStatus(raw: KubernetesObject): string {
+  // metadata.deletionTimestamp is real, authoritative API server state - set
+  // the moment a delete is accepted, before status.phase or the Ready
+  // condition necessarily change (a Pod can sit at phase "Running" with the
+  // Ready condition still "True" for its whole terminationGracePeriodSeconds
+  // window). Surfacing it as "Terminating" - the same label `kubectl get
+  // pods` shows for exactly this case - is strictly more accurate than the
+  // stale phase, not a fabrication: it's what the frontend's Pod Failure
+  // animation (ResourceNode.tsx's .pod-failing state) relies on to reflect
+  // real deletion progress instead of a frontend-only timer guessing at it.
+  if (raw.metadata?.deletionTimestamp) return 'Terminating';
   const phase = raw.status?.phase ?? 'Unknown';
   const ready = raw.status?.conditions?.find((condition: any) => condition.type === 'Ready')?.status;
   return ready === 'True' ? `${phase} (Ready)` : phase;

@@ -8,12 +8,17 @@ import type { ClusterKind, ClusterResource, ResourceGraph } from '@kubeverse/sha
 import type { Edge, Node } from '@xyflow/react';
 import { computeLayout, resolveOverlaps, type Point } from './layout';
 
-// `highlighted` is never set by anything in this module - it's a render-time
-// overlay PlaygroundView applies to a *copy* of a node's data (never the
-// underlying rfNodes state) when that node is the target of the currently
-// active Lab experiment, so the topology can visually call it out without
-// graph.ts knowing anything about experiments.
-export type ExplorerNodeData = { resource: ClusterResource; highlighted?: boolean };
+// `highlighted`/`failing` are never set by anything in this module - they're
+// render-time overlays PlaygroundView applies to a *copy* of a node's data
+// (never the underlying rfNodes state) when that node is the target of the
+// currently active Lab experiment, so the topology can visually call it out
+// without graph.ts knowing anything about experiments. `failing` is a
+// distinct flag from `highlighted` (not a variant of it): it drives the Pod
+// Failure animation (ResourceNode.tsx's faint-red/fading state) and is only
+// ever set on the exact Pod a 'pod-failure' experiment targets - never on a
+// replacement Pod, and never for 'restart'/'scale', which keep the existing
+// generic `highlighted` pulse.
+export type ExplorerNodeData = { resource: ClusterResource; highlighted?: boolean; failing?: boolean };
 export type ExplorerNode = Node<ExplorerNodeData, 'resource'>;
 
 const palette: Record<ClusterKind, string> = {

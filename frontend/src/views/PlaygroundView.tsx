@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, type Edge, type NodeMouseHandler, type ReactFlowInstance } from '@xyflow/react';
 import { clusterKinds, type ClusterResource, type ClusterSnapshot, type LabExperiment, type ResourceGraph } from '@kubeverse/shared';
-import { buildExplorerEdges, filterVisible, layoutAllNodes, NODE_HEIGHT, NODE_WIDTH, reconcileNodes, type ExplorerNode, type ExplorerNodeData } from '../graph';
+import { buildExplorerEdges, filterVisible, layoutAllNodes, reconcileNodes, type ExplorerNode, type ExplorerNodeData } from '../graph';
 import { Inspector } from '../Inspector';
 import { ResourceNode } from '../ResourceNode';
 import { ExplorerControls } from '../ExplorerControls';
@@ -10,34 +10,26 @@ import { shouldResetForProjectChange } from '../playgroundState';
 import { LabPanel } from '../lab/LabPanel';
 import { LabDrawer } from '../lab/LabDrawer';
 import { ActivityStrip } from '../lab/ActivityStrip';
-import { TrafficParticles, type Particle } from '../lab/TrafficParticles';
+import { TrafficParticles } from '../lab/TrafficParticles';
+import { computeNewDots, DOT_TRAVEL_MS, findNodeId, type TrafficDot } from '../lab/trafficDots';
+import { failingPodKeyFor, highlightedKeysFor, nodeKey } from '../lab/experimentHighlight';
 import type { ViewId } from '../shell/Sidebar';
 
 const MAX_EXPERIMENTS_SHOWN = 20;
-const PARTICLE_LIFETIME_MS = 700;
-// Intensity scaling (UX refinement, Part 7): a burst's particle count is
-// derived from how many requests actually landed since the last progress
-// tick, not from the tick cadence itself (which is roughly constant
-// regardless of RPS - see backend/src/lab/trafficRunner.ts's
-// PROGRESS_INTERVAL_MS) - otherwise 10 RPS and 100 RPS would look visually
-// identical. Capped so a very high RPS run still only ever renders a
-// bounded number of DOM particles at once (Part 20).
-const PARTICLES_PER_REQUESTS = 4;
-const MAX_PARTICLES_PER_TICK = 8;
-const MAX_LIVE_PARTICLES = 40;
+// A traffic progress tick's span, used only to spread a burst of new dots
+// across it (Part 12) - matches backend/src/lab/trafficRunner.ts's own
+// PROGRESS_INTERVAL_MS; not load-bearing if the two ever drift, since it
+// only affects how spread-out a burst looks, not correctness.
+const TRAFFIC_TICK_SPAN_MS = 300;
+// Bounds how many dots ever exist in the DOM/animation loop at once,
+// regardless of how large a burst briefly computes to (Part 19/20) - a dot
+// that ages out (see the cleanup below) is dropped well before this could
+// matter for any realistic requests/RPS configuration.
+const MAX_LIVE_PARTICLES = 60;
 
 function upsertExperiment(list: LabExperiment[], next: LabExperiment): LabExperiment[] {
   const withoutNext = list.filter((experiment) => experiment.id !== next.id);
   return [next, ...withoutNext].slice(0, MAX_EXPERIMENTS_SHOWN);
-}
-
-function nodeCenter(nodes: ExplorerNode[], kind: string, namespace: string | undefined, name: string): { x: number; y: number } | undefined {
-  const node = nodes.find((candidate) => candidate.data.resource.kind === kind && candidate.data.resource.namespace === namespace && candidate.data.resource.name === name);
-  return node ? { x: node.position.x + NODE_WIDTH / 2, y: node.position.y + NODE_HEIGHT / 2 } : undefined;
-}
-
-function nodeKey(kind: string, namespace: string | undefined, name: string): string {
-  return `${kind}:${namespace ?? ''}:${name}`;
 }
 
 const emptySnapshot: ClusterSnapshot = {
@@ -101,7 +93,7 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
   const [locked, setLocked] = useState(true);
   const [experiments, setExperiments] = useState<LabExperiment[]>([]);
   const [activeExperimentId, setActiveExperimentId] = useState<string>();
-  const [particles, setParticles] = useState<Particle[]>([]);
+  const [particles, setParticles] = useState<TrafficDot[]>([]);
   const [labError, setLabError] = useState<string>();
   // Lab Controls is a slide-over drawer, not a permanent layout column (UX
   // refinement, Part 1) - closed by default so the topology gets maximum
@@ -112,8 +104,17 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
   // in-progress state are untouched by collapsing it.
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const projectId = currentProject?.id;
-  const lastTrafficSentRef = useRef<Map<string, number>>(new Map());
-  const particleCursorRef = useRef(0);
+  // Per-experiment cumulative dot-batching state (Part 2/15): how many real
+  // requests had already been converted to dots (`sent`), and where the
+  // round-robin over `traffic.targetPods` left off (`cursor`) - see
+  // trafficDots.ts's computeNewDots. Keyed by experiment id and cleared on
+  // project switch (below) so a new project's traffic never inherits a
+  // previous project's dot count.
+  const trafficDotStateRef = useRef<Map<string, { sent: number; cursor: number }>>(new Map());
+  // The DOM node TrafficParticles reads live React Flow edge `<path>`
+  // geometry from (Part 4/6) - scoped to this Playground's own canvas, never
+  // a bare `document.querySelector`.
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   // React-Flow-owned topology state (Task 5): this - not resourceGraph - is
   // the single source of truth for node *position*. resourceGraph only ever
@@ -165,51 +166,48 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
   // Applies one Lab experiment update (from the initial GET or a `lab-update`
   // SSE event - see the SSE effect below) into local state, and - only for a
   // traffic experiment whose measured `sent` count actually grew since the
-  // last update - spawns a small burst of aggregated traffic particles
-  // animating from the target Service's node toward its *currently* real
-  // target Pods (traffic.targetPods, the same live-refreshed list
-  // lab/trafficRunner.ts is actually sending requests to - see routes/lab.ts's
-  // resolveReadyTargets). This is the only place particles are created:
-  // never per-request (burst size scales with requests-since-last-tick, not
-  // 1:1 - Part 7), never for a kind other than 'traffic', and never pointed
-  // at a Pod that isn't a real, currently-eligible endpoint (Part 8/14) -
-  // when a Pod fails mid-run its name drops out of targetPods on the very
-  // next backend tick, so particles simply stop being aimed at it.
+  // last update - converts that real growth into visual dots (1 dot = 10
+  // requests, ceil-batched - see trafficDots.ts) travelling along the real
+  // "selects" edge from the target Service's node to whichever of its
+  // *currently* real target Pods (traffic.targetPods, the same live-refreshed
+  // list lab/trafficRunner.ts is actually sending requests to - see
+  // routes/lab.ts's resolveReadyTargets) each dot is round-robined onto. This
+  // is the only place dots are created: never per-request, never for a kind
+  // other than 'traffic', and never pointed at a Pod that isn't a real,
+  // currently-eligible endpoint (Part 8/14) - when a Pod fails mid-run its
+  // name drops out of targetPods on the very next backend tick, so new dots
+  // simply stop being aimed at it (dots already in flight toward it still
+  // finish their travel, exactly like the real in-flight requests they
+  // represent).
   const applyExperimentUpdate = useCallback((experiment: LabExperiment) => {
     setExperiments((current) => upsertExperiment(current, experiment));
 
     const traffic = experiment.traffic;
     if (experiment.kind === 'traffic' && traffic && traffic.targetPods.length > 0) {
-      const previousSent = lastTrafficSentRef.current.get(experiment.id) ?? 0;
-      const deltaSent = traffic.sent - previousSent;
-      if (deltaSent > 0) {
-        lastTrafficSentRef.current.set(experiment.id, traffic.sent);
-        const from = nodeCenter(rfNodes, experiment.target.kind, experiment.target.namespace, experiment.target.name);
-        if (from) {
-          const burstSize = Math.max(1, Math.min(MAX_PARTICLES_PER_TICK, Math.round(deltaSent / PARTICLES_PER_REQUESTS)));
-          const newParticles: Particle[] = [];
-          for (let i = 0; i < burstSize; i += 1) {
-            const podName = traffic.targetPods[particleCursorRef.current % traffic.targetPods.length];
-            particleCursorRef.current += 1;
-            const to = nodeCenter(rfNodes, 'Pod', experiment.target.namespace, podName);
-            if (!to) continue;
-            // `ok` reflects this batch's overall error rate, not one specific
-            // request's outcome - trafficRunner reports cumulative stats, not
-            // a per-request success flag, so that's the only honest signal
-            // available for this particle's styling (Part 14 - never claim
-            // "this exact request went through this Pod").
-            newParticles.push({ id: `${experiment.id}:${traffic.sent}:${i}`, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, ok: traffic.errorRate < 0.5 });
-          }
-          if (newParticles.length > 0) {
-            const ids = new Set(newParticles.map((particle) => particle.id));
-            setParticles((current) => [...current, ...newParticles].slice(-MAX_LIVE_PARTICLES));
-            setTimeout(() => setParticles((current) => current.filter((particle) => !ids.has(particle.id))), PARTICLE_LIFETIME_MS);
-          }
+      const state = trafficDotStateRef.current.get(experiment.id) ?? { sent: 0, cursor: 0 };
+      if (traffic.sent > state.sent) {
+        const sourceNodeId = findNodeId(rfNodes, experiment.target.kind, experiment.target.namespace, experiment.target.name);
+        // `ok` reflects this batch's overall error rate, not one specific
+        // request's outcome - trafficRunner reports cumulative stats, not a
+        // per-request success flag, so that's the only honest signal
+        // available for a dot's styling (Part 14 - never claim "this exact
+        // request went through this Pod").
+        const { dots: newDots, cursor } = computeNewDots({
+          experimentId: experiment.id, previousSent: state.sent, nextSent: traffic.sent,
+          targetPods: traffic.targetPods, sourceNodeId, namespace: experiment.target.namespace,
+          edges: rfEdges, nodes: rfNodes, ok: traffic.errorRate < 0.5,
+          cursor: state.cursor, now: performance.now(), spanMs: TRAFFIC_TICK_SPAN_MS,
+        });
+        trafficDotStateRef.current.set(experiment.id, { sent: traffic.sent, cursor });
+        if (newDots.length > 0) {
+          const ids = new Set(newDots.map((dot) => dot.id));
+          setParticles((current) => [...current, ...newDots].slice(-MAX_LIVE_PARTICLES));
+          setTimeout(() => setParticles((current) => current.filter((dot) => !ids.has(dot.id))), DOT_TRAVEL_MS);
         }
       }
     }
     if (experiment.status === 'preparing' || experiment.status === 'running') setActiveExperimentId(experiment.id);
-  }, [rfNodes]);
+  }, [rfNodes, rfEdges]);
 
   const refresh = useCallback(async () => {
     const targetProjectId = requestedProjectIdRef.current;
@@ -305,12 +303,17 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
   }, [refresh, projectId, retryKey, applyExperimentUpdate]);
 
   // Switching projects must also clear the previous project's experiments/
-  // particles - they're just as project-scoped as the topology itself.
+  // traffic dots (Part 15) - they're just as project-scoped as the topology
+  // itself. Clearing trafficDotStateRef, not just the visible `particles`,
+  // is what stops Project B from ever computing a dot count that continues
+  // Project A's cumulative `sent`/cursor - a fresh experiment id in Project
+  // B always starts from { sent: 0, cursor: 0 } (applyExperimentUpdate's
+  // `?? { sent: 0, cursor: 0 }` fallback), never resurrecting stale state.
   useEffect(() => {
     setExperiments([]);
     setActiveExperimentId(undefined);
     setParticles([]);
-    lastTrafficSentRef.current.clear();
+    trafficDotStateRef.current.clear();
   }, [projectId]);
 
   useEffect(() => {
@@ -346,40 +349,20 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
   const activeExperiment = experiments.find((experiment) => experiment.id === activeExperimentId);
 
   // Which topology nodes to visually call out as "part of the active
-  // experiment" (UX refinement, Part 10): the experiment's own target
-  // (Pod/Deployment for the mutating kinds) plus whichever Pod its most
-  // recent transition naming a *different* Pod refers to - in practice, the
-  // replacement Pod, the moment Kubernetes actually reports it, never
-  // before. Deliberately only the most recent one, not every distinct Pod
-  // ever mentioned: the backend tracks transitions per-ReplicaSet (see
-  // backend/src/lab/experiments.ts), so an unrelated sibling Pod under the
-  // same ReplicaSet reporting an incidental status blip during the same
-  // window would otherwise light up too, which would misrepresent "the
-  // affected Pod" as a whole group. Traffic experiments don't get this
-  // treatment - their Service/Pods are already highlighted by the traffic
-  // particles animating through them.
-  const highlightedKeys = useMemo(() => {
-    const isLive = activeExperiment?.status === 'preparing' || activeExperiment?.status === 'running';
-    if (!activeExperiment || !isLive || activeExperiment.kind === 'traffic') return null;
-    const keys = new Set<string>();
-    keys.add(nodeKey(activeExperiment.target.kind, activeExperiment.target.namespace, activeExperiment.target.name));
-    for (let i = activeExperiment.transitions.length - 1; i >= 0; i -= 1) {
-      const transition = activeExperiment.transitions[i];
-      if (transition.kind === 'Pod' && transition.name !== activeExperiment.target.name) {
-        keys.add(nodeKey('Pod', activeExperiment.target.namespace, transition.name));
-        break;
-      }
-    }
-    return keys;
-  }, [activeExperiment]);
+  // experiment" - see lab/experimentHighlight.ts for the full rationale
+  // (amber ring for restart/scale's target+replacement; the Pod Failure
+  // lifecycle's own red/fading treatment is separate, in failingPodKey).
+  const highlightedKeys = useMemo(() => highlightedKeysFor(activeExperiment), [activeExperiment]);
+  const failingPodKey = useMemo(() => failingPodKeyFor(activeExperiment), [activeExperiment]);
 
   const nodesForRender = useMemo(() => {
-    if (!highlightedKeys || highlightedKeys.size === 0) return visibleNodes;
+    if ((!highlightedKeys || highlightedKeys.size === 0) && !failingPodKey) return visibleNodes;
     return visibleNodes.map((node) => {
       const key = nodeKey(node.data.resource.kind, node.data.resource.namespace, node.data.resource.name);
-      return highlightedKeys.has(key) ? { ...node, data: { ...node.data, highlighted: true } } : node;
+      if (key === failingPodKey) return { ...node, data: { ...node.data, failing: true } };
+      return highlightedKeys?.has(key) ? { ...node, data: { ...node.data, highlighted: true } } : node;
     });
-  }, [visibleNodes, highlightedKeys]);
+  }, [visibleNodes, highlightedKeys, failingPodKey]);
 
   const selectNode: NodeMouseHandler = (_, node) => setSelected((node.data as ExplorerNodeData).resource);
   const toggleKind = (kind: typeof clusterKinds[number]) => setVisibleKinds((current) => {
@@ -459,7 +442,7 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
         {labError && <div className="observer-warning error" onClick={() => setLabError(undefined)}>⚠ {labError} (click to dismiss)</div>}
         <div className="playground-body">
         <section className={`explorer-layout ${inspectorCollapsed ? 'inspector-collapsed' : ''}`}>
-          <div className="canvas">
+          <div className="canvas" ref={canvasRef}>
             <ReactFlow<ExplorerNode>
               nodes={nodesForRender}
               edges={visibleEdges}
@@ -477,7 +460,7 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
               <Background gap={18} size={1} />
               <Controls />
               <MiniMap />
-              <TrafficParticles particles={particles} />
+              <TrafficParticles dots={particles} containerRef={canvasRef} />
             </ReactFlow>
           </div>
           <aside className={`side-panel ${inspectorCollapsed ? 'collapsed' : ''}`}>

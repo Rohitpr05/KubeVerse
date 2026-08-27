@@ -70,6 +70,29 @@ test('projectResources includes only project-owned resources plus the Node(s) ac
   assert.ok(!byKindAndName.has('Node:node-2'), 'node-2 only hosts an unrelated Pod and must be excluded');
 });
 
+// Regression coverage for the Pod Failure animation (frontend/src/ResourceNode.tsx's
+// .pod-failing state): a Pod's derived status must honestly reflect a real,
+// in-flight deletion (metadata.deletionTimestamp, set by the API server the
+// moment `kubectl delete`/deletePod() is accepted) rather than continuing to
+// report a stale "Running (Ready)" for however long the Pod's
+// terminationGracePeriodSeconds window lasts.
+test('a Pod with a real deletionTimestamp reports "Terminating", even while phase/Ready still read as healthy', () => {
+  const { state } = buildFixture();
+  state.apply('Pod', 'MODIFIED', {
+    metadata: { uid: 'pod-project', name: 'backend-abc123', namespace: 'kubeverse-shop', labels: withOwnership({ app: 'backend' }), deletionTimestamp: '2026-01-01T00:05:00Z' },
+    spec: { nodeName: 'node-1', containers: [{ name: 'backend' }] },
+    status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }] },
+  });
+  const pod = state.resourceByUid('pod-project');
+  assert.equal(pod?.status, 'Terminating');
+});
+
+test('a Pod with no deletionTimestamp is unaffected (no regression to the ordinary "Running (Ready)" reading)', () => {
+  const { state } = buildFixture();
+  const pod = state.resourceByUid('pod-project');
+  assert.equal(pod?.status, 'Running (Ready)');
+});
+
 test('isResourceOwnedByProject: a Node is relevant only if it currently hosts a project Pod', () => {
   const { state } = buildFixture();
   const node1 = state.projectResources(PROJECT_A).find((r) => r.kind === 'Node' && r.name === 'node-1');

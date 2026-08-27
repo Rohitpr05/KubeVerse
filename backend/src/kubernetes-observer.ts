@@ -8,31 +8,100 @@ type Diagnostic = ObserverDiagnostics['watchedKinds'][number];
 
 function items(response: any): KubernetesObject[] { return (response?.body ?? response)?.items ?? []; }
 
+// How long to wait before retrying the *initial* connection (kubeconfig load
+// + client construction) after it fails - e.g. Docker Desktop's Kubernetes
+// isn't up yet at backend startup, or crashed and hasn't restored its
+// context. Matches the existing per-kind watch reconnect cadence
+// (startWatch()'s own `setTimeout(run, 1000)`) so there's one consistent
+// retry rhythm across the whole observer, not two different magic numbers.
+const RECONNECT_INTERVAL_MS = 1000;
+
 export class KubernetesObserver {
-  private readonly kubeConfig = new k8s.KubeConfig();
-  private readonly core: k8s.CoreV1Api;
-  private readonly apps: k8s.AppsV1Api;
-  private readonly batch: k8s.BatchV1Api;
-  private readonly networking: k8s.NetworkingV1Api;
-  private readonly storage: k8s.StorageV1Api;
-  private readonly watch: k8s.Watch;
+  // Constructing a KubeConfig-backed api client (k8s.KubeConfig#makeApiClient,
+  // used both directly here and internally by KubernetesObjectApi.makeApiClient
+  // in execution/kubernetesRunner.ts) throws synchronously - "No active
+  // cluster!" - the moment the local kubeconfig has no current context/cluster
+  // (e.g. Docker Desktop's Kubernetes isn't running, or crashed and hasn't
+  // restored its context yet). That is a completely ordinary, expected local
+  // state for KubeVerse - the whole point of the "Kubernetes unavailable"
+  // banner and the environment checks in routes/environment.ts is that the
+  // backend must stay up and keep retrying, never crash, when this happens.
+  // These clients therefore are NOT constructed in the constructor (which
+  // server.ts calls unguarded, before its own try/catch even starts) - they
+  // are deferred to start()/connect(), which server.ts already wraps in a
+  // try/catch for exactly this reason. The `!` assertions are safe: every
+  // field is assigned before `definitions` is built below, and this class's
+  // other methods (readPodLogs/readPodProxy) are only ever reached via
+  // routes that already handle a rejected promise as a normal request
+  // failure.
+  private kubeConfig!: k8s.KubeConfig;
+  private core!: k8s.CoreV1Api;
+  private apps!: k8s.AppsV1Api;
+  private batch!: k8s.BatchV1Api;
+  private networking!: k8s.NetworkingV1Api;
+  private storage!: k8s.StorageV1Api;
+  private watch!: k8s.Watch;
   private readonly diagnostics = new Map<ObservedKind, Diagnostic>();
   private readonly startedAt = new Date().toISOString();
   private started = false;
+  // The exact error message last recorded for a failed *connection* attempt
+  // (as opposed to a per-kind list/watch failure, which already tracks its
+  // own `diagnostic.lastError`) - kept so a later successful connection can
+  // clear precisely that message via ClusterState.clearError's exact-string
+  // match, rather than guessing at what was recorded.
+  private lastConnectError?: string;
+  private reconnectTimer?: NodeJS.Timeout;
 
-  constructor(private readonly state: ClusterState, private readonly namespaceFilter: string[]) {
-    this.kubeConfig.loadFromDefault();
-    this.core = this.kubeConfig.makeApiClient(k8s.CoreV1Api);
-    this.apps = this.kubeConfig.makeApiClient(k8s.AppsV1Api);
-    this.batch = this.kubeConfig.makeApiClient(k8s.BatchV1Api);
-    this.networking = this.kubeConfig.makeApiClient(k8s.NetworkingV1Api);
-    this.storage = this.kubeConfig.makeApiClient(k8s.StorageV1Api);
-    this.watch = new k8s.Watch(this.kubeConfig);
-  }
+  constructor(private readonly state: ClusterState, private readonly namespaceFilter: string[]) {}
 
+  // Called once by server.ts. Kicks off the first connection attempt and
+  // returns once that attempt (success or failure) has settled - server.ts's
+  // own try/catch is what that first outcome is for. If it failed, this
+  // keeps retrying in the background (see connect()'s catch branch) so a
+  // Kubernetes cluster that becomes reachable later - the same instance
+  // reconnecting, Docker Desktop restarting, `kubectl` starting to work
+  // again - is picked up automatically, without requiring the backend
+  // process itself to be restarted.
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    await this.connect();
+  }
+
+  private async connect(): Promise<void> {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = undefined; }
+    try {
+      // A fresh KubeConfig on every attempt (rather than reusing one
+      // instance across retries) so a kubeconfig file that changes between
+      // attempts - a new context appearing, Docker Desktop rewriting it - is
+      // actually re-read, not evaluated against a stale in-memory snapshot.
+      const kubeConfig = new k8s.KubeConfig();
+      kubeConfig.loadFromDefault();
+      const core = kubeConfig.makeApiClient(k8s.CoreV1Api);
+      const apps = kubeConfig.makeApiClient(k8s.AppsV1Api);
+      const batch = kubeConfig.makeApiClient(k8s.BatchV1Api);
+      const networking = kubeConfig.makeApiClient(k8s.NetworkingV1Api);
+      const storage = kubeConfig.makeApiClient(k8s.StorageV1Api);
+      const watch = new k8s.Watch(kubeConfig);
+      this.kubeConfig = kubeConfig;
+      this.core = core;
+      this.apps = apps;
+      this.batch = batch;
+      this.networking = networking;
+      this.storage = storage;
+      this.watch = watch;
+    } catch (error) {
+      const message = `Kubernetes configuration unavailable: ${this.errorText(error)}`;
+      this.state.recordError(message);
+      this.lastConnectError = message;
+      // unref(): a pending reconnect attempt must never be the thing keeping
+      // the backend process (or a test run) alive on its own - it's a
+      // background retry, not application-critical work. Matches the same
+      // reasoning already applied to ExperimentTracker's convergence timeout.
+      this.reconnectTimer = setTimeout(() => void this.connect(), RECONNECT_INTERVAL_MS).unref();
+      return;
+    }
+    if (this.lastConnectError) { this.state.clearError(this.lastConnectError); this.lastConnectError = undefined; }
     const definitions: WatchDefinition[] = [
       { kind: 'Namespace', path: '/api/v1/namespaces', list: () => this.core.listNamespace() },
       { kind: 'Node', path: '/api/v1/nodes', list: () => this.core.listNode() },

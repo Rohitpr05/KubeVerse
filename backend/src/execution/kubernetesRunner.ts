@@ -17,9 +17,26 @@ const execFileAsync = promisify(execFile);
 // by default) - a plain object literal patches in the expected "merge, don't
 // replace whole object" way, so scaleDeployment/restartDeployment can stay
 // simple partial specs instead of hand-built JSON-Patch arrays.
-const kubeConfig = new k8s.KubeConfig();
-kubeConfig.loadFromDefault();
-const objectApi = k8s.KubernetesObjectApi.makeApiClient(kubeConfig);
+//
+// Deliberately NOT constructed once at module load: k8s.KubeConfig#makeApiClient
+// throws synchronously ("No active cluster!") the moment the local kubeconfig
+// has no current context - an entirely ordinary local state (Docker Desktop's
+// Kubernetes not running yet, or having just crashed) that must never crash
+// the whole backend process just because this module got imported. Building a
+// fresh KubeConfig/client on every call is also what makes these operations
+// self-healing: if the cluster becomes reachable again later in the same
+// backend process, the very next call picks that up by re-reading the
+// kubeconfig, rather than being stuck with a client built from a stale (or
+// never-successful) snapshot.
+function freshKubeConfig(): k8s.KubeConfig {
+  const kubeConfig = new k8s.KubeConfig();
+  kubeConfig.loadFromDefault();
+  return kubeConfig;
+}
+
+function freshObjectApi(): k8s.KubernetesObjectApi {
+  return k8s.KubernetesObjectApi.makeApiClient(freshKubeConfig());
+}
 
 function describeK8sError(error: unknown): string {
   if (error && typeof error === 'object' && 'body' in error) {
@@ -31,7 +48,7 @@ function describeK8sError(error: unknown): string {
 
 export async function deletePod(namespace: string, name: string): Promise<{ ok: boolean; output: string }> {
   try {
-    await objectApi.delete({ apiVersion: 'v1', kind: 'Pod', metadata: { name, namespace } });
+    await freshObjectApi().delete({ apiVersion: 'v1', kind: 'Pod', metadata: { name, namespace } });
     return { ok: true, output: `Pod ${namespace}/${name} deletion requested.` };
   } catch (error) {
     return { ok: false, output: describeK8sError(error) };
@@ -40,7 +57,7 @@ export async function deletePod(namespace: string, name: string): Promise<{ ok: 
 
 export async function scaleDeployment(namespace: string, name: string, replicas: number): Promise<{ ok: boolean; output: string }> {
   try {
-    await objectApi.patch({ apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name, namespace }, spec: { replicas } } as k8s.KubernetesObject);
+    await freshObjectApi().patch({ apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name, namespace }, spec: { replicas } } as k8s.KubernetesObject);
     return { ok: true, output: `Deployment ${namespace}/${name} scale requested: ${replicas} replicas.` };
   } catch (error) {
     return { ok: false, output: describeK8sError(error) };
@@ -55,7 +72,7 @@ export async function scaleDeployment(namespace: string, name: string, replicas:
 // "Restart" control.
 export async function restartDeployment(namespace: string, name: string): Promise<{ ok: boolean; output: string }> {
   try {
-    await objectApi.patch({
+    await freshObjectApi().patch({
       apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name, namespace },
       spec: { template: { metadata: { annotations: { 'kubeverse.dev/restarted-at': new Date().toISOString() } } } },
     } as k8s.KubernetesObject);
@@ -72,7 +89,7 @@ export async function restartDeployment(namespace: string, name: string): Promis
 // Service) is deliberate - see lab/trafficRunner.ts for why.
 export async function openPodPortForward(namespace: string, podName: string, targetPort: number): Promise<{ localPort: number; close: () => void }> {
   const net = await import('node:net');
-  const forward = new k8s.PortForward(kubeConfig);
+  const forward = new k8s.PortForward(freshKubeConfig());
   const server = net.createServer((socket) => {
     void forward.portForward(namespace, podName, [targetPort], socket, null, socket);
   });

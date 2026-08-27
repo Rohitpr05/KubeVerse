@@ -17,6 +17,24 @@ export async function checkDockerAvailable(): Promise<{ available: boolean; vers
   }
 }
 
+// Builds (and tags, via docker-compose.yml's explicit `image:` field - see
+// generators/docker.ts) every buildable service's local image WITHOUT
+// starting any container - unlike composeUp, which also runs `up -d`. This
+// is what routes/execution.ts's Kubernetes-apply route calls first: the
+// invariant it exists to guarantee is "every image a generated Deployment
+// references already exists locally before kubectl ever creates a Pod",
+// without launching redundant Compose-managed containers alongside the
+// Kubernetes ones for a deployment the user actually asked to run on
+// Kubernetes.
+export async function composeBuild(projectDockerDir: string): Promise<{ ok: boolean; output: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync('docker', ['compose', 'build'], { cwd: projectDockerDir, timeout: 300_000 });
+    return { ok: true, output: stdout + stderr };
+  } catch (error) {
+    return { ok: false, output: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export async function composeUp(projectDockerDir: string): Promise<{ ok: boolean; output: string }> {
   try {
     const { stdout, stderr } = await execFileAsync('docker', ['compose', 'up', '-d', '--build'], { cwd: projectDockerDir, timeout: 300_000 });

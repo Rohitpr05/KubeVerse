@@ -1,11 +1,20 @@
 import { stringify } from 'yaml';
 import type { ArchitectureSpec, ServiceSpec } from '../architecture/schema.js';
 import { ownershipLabels, type ProjectContext } from '../ownership.js';
+import { getProjectImageName } from './imageName.js';
 import { managedImageFor } from './managedService.js';
 import type { GeneratedFile } from './types.js';
 
+// spec.name is arbitrary free text (the AI-compiled architecture's own
+// name, e.g. "Application Server Architecture") - not safe to use directly
+// as a Kubernetes object name, which must match RFC 1123 (lowercase
+// alphanumeric and '-', starting/ending alphanumeric).
+function sanitizeResourceName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+}
+
 function namespaceName(spec: ArchitectureSpec): string {
-  return `kubeverse-${spec.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
+  return `kubeverse-${sanitizeResourceName(spec.name)}`;
 }
 
 // Deterministically derives Namespace/Deployment/Service/ConfigMap/Secret/PVC/
@@ -34,7 +43,12 @@ export function generateKubernetesManifests(spec: ArchitectureSpec, project: Pro
 
   for (const service of spec.services) {
     const managed = managedImageFor(service.runtime);
-    const image = managed ? managed.image : `${spec.name}/${service.name}:latest`;
+    // Managed runtimes (mongodb/redis/postgres/mysql) reference a real,
+    // public image and are genuinely meant to be pulled from a registry.
+    // Everything else is a KubeVerse-generated service - its image must be
+    // exactly what generators/docker.ts builds and tags locally (see
+    // imageName.ts for why), never invented separately here.
+    const image = managed ? managed.image : getProjectImageName(project, service.name);
     const containerPort = managed ? managed.port : service.port;
 
     const dependsEnv = service.dependsOn.map((dep) => {
@@ -55,6 +69,19 @@ export function generateKubernetesManifests(spec: ArchitectureSpec, project: Pro
     const container: Record<string, unknown> = {
       name: service.name,
       image,
+      // Locally-built services are always tagged ":latest" (see
+      // imageName.ts), and Kubernetes' own default imagePullPolicy for a
+      // ":latest" tag is "Always" - meaning it would try a registry pull on
+      // every pod creation regardless of a same-named image already sitting
+      // in the local Docker Desktop Kubernetes image store. "IfNotPresent"
+      // is deliberately used instead of "Never": if the local build was
+      // somehow skipped or failed, this still falls back to attempting a
+      // pull (which fails with a clear, diagnosable "not found" instead of
+      // the less helpful ErrImageNeverPull), rather than the happy path
+      // needlessly reaching the network for an image that's already built.
+      // Managed-runtime images (mongo:7, redis:7-alpine, ...) are real,
+      // versioned public images and are left on Kubernetes' normal default.
+      imagePullPolicy: managed ? undefined : 'IfNotPresent',
       ports: [{ containerPort }],
       envFrom: envFrom.length > 0 ? envFrom : undefined,
       env: dependsEnv.length > 0 ? dependsEnv : undefined,
@@ -130,7 +157,7 @@ export function generateKubernetesManifests(spec: ArchitectureSpec, project: Pro
     const ingress = {
       apiVersion: 'networking.k8s.io/v1',
       kind: 'Ingress',
-      metadata: { name: `${spec.name}-ingress`, namespace: ns, labels: { ...ownership } },
+      metadata: { name: `${sanitizeResourceName(spec.name)}-ingress`, namespace: ns, labels: { ...ownership } },
       spec: {
         rules: [
           {

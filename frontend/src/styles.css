@@ -298,22 +298,65 @@ dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-s
 .experiment-final-line.status-cancelled .transition-check, .experiment-final-line.status-cancelled { color: #9eafc3; }
 .experiment-final-line.status-preparing, .experiment-final-line.status-running { color: #cfe4ff; }
 
-/* --- Phase 2: traffic particles (ViewportPortal children, flow-space) --- */
-.traffic-particle { position: absolute; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; background: #38bdf8; box-shadow: 0 0 6px #38bdf8aa; animation: traffic-flow 700ms ease-out forwards; }
+/* --- Phase 3A: traffic dots (ViewportPortal children, flow-space) ---
+   Position and opacity are driven directly by TrafficParticles.tsx's own
+   requestAnimationFrame loop (element.style.transform/opacity, sampled from
+   the real rendered React Flow edge path each frame) - not a CSS @keyframes
+   animation, since a dot's travel time is fixed but its path length varies
+   per edge. `top`/`left` stay at the portal's flow-space origin; `transform`
+   is what actually moves the dot along the edge. Starts invisible so the
+   one frame between mount and the loop's first tick is never a visible
+   flash at the untransformed (0,0) origin. */
+.traffic-particle { position: absolute; top: 0; left: 0; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; pointer-events: none; background: #38bdf8; box-shadow: 0 0 6px #38bdf8aa; opacity: 0; }
 .traffic-particle.failed { background: #fb7185; box-shadow: 0 0 6px #fb7185aa; }
+/* Phase 3B layering fix: TrafficParticles renders through React Flow's own
+   <ViewportPortal>, whose target div (.react-flow__viewport-portal) is the
+   LAST child inside the pannable/zoomable viewport - after both the edges
+   and nodes layers. Edges and unselected nodes both get an inline z-index
+   of exactly 0 from React Flow itself (its own default: "edges render below
+   nodes" normally relies on edges simply coming first in DOM order at that
+   same z=0, not on a numeric z-index difference), so with no z-index of its
+   own the portal - being last in DOM order at that same tied z=0 - painted
+   on top of everything, including node cards. A negative z-index puts it
+   unambiguously below both layers: nodes have an opaque background
+   (.resource-node below), so they now correctly occlude a dot passing
+   underneath them; edges are unfilled strokes only 1-2px wide, so a dot
+   sitting fractionally "under" one is still almost entirely visible on the
+   exposed portions of the path - satisfying "particles behind nodes, still
+   visible on exposed edges" without moving a single dot off the real edge
+   path or touching its opacity/animation logic at all. Only TrafficParticles
+   uses ViewportPortal today; if a future overlay needs to sit above nodes
+   instead, give it a dedicated class rather than raising this one. */
+.react-flow__viewport-portal { z-index: -1; }
 /* Active-experiment target highlight (Part 10): a pulsing accent ring on
    whichever real topology node the active experiment names - the node's own
    color-coded status dot (ResourceNode.tsx) already shows its real
    Kubernetes state; this ring only adds "this one is part of the current
-   experiment," it never overrides or fakes that state. */
+   experiment," it never overrides or fakes that state. Used for
+   restart/scale only - Pod Failure has its own .pod-failing treatment below. */
 .resource-node.experiment-target { animation: experiment-pulse 1.4s ease-in-out infinite; }
 @keyframes experiment-pulse {
   0%, 100% { box-shadow: 0 0 0 2px #fbbf24aa, 0 3px 10px #02061788; }
   50% { box-shadow: 0 0 0 5px #fbbf2444, 0 3px 10px #02061788; }
 }
-@keyframes traffic-flow {
-  from { transform: translate(var(--from-x), var(--from-y)); opacity: 1; }
-  to { transform: translate(var(--to-x), var(--to-y)); opacity: 0; }
+/* Phase 3B: Pod Failure visual lifecycle. Applied for exactly as long as a
+   real 'pod-failure' experiment is preparing/running against this specific
+   Pod (PlaygroundView.tsx's failingPodKey) - never a frontend-only timer
+   pretending to know when Kubernetes will actually finish. The transition
+   is staggered in two phases entirely via CSS timing (no per-frame JS, no
+   extra timers - Part 23): the tint/border go faint red quickly (Stage 2,
+   "clearly distinguishable from healthy Pods"), then opacity eases down
+   over a longer, slightly-delayed transition (Stage 3, "more transparent").
+   Real disappearance (Stage 4) is the node unmounting entirely once
+   Kubernetes actually removes the Pod (reconcileNodes drops it once it's no
+   longer in the observed snapshot) - by then the card has already faded
+   most of the way, so the final removal reads as the end of one continuous
+   motion rather than an abrupt cut. */
+.resource-node.pod-failing {
+  transition: background-color .45s ease, border-color .45s ease, opacity 1.6s ease .35s;
+  background-color: #3a1620;
+  border-color: #fb7185;
+  opacity: .45;
 }
 .resource-node { width: 190px; min-height: 70px; border: 1px solid #314258; border-left: 4px solid var(--accent); border-radius: 7px; background: #162238; padding: 8px 10px; box-shadow: 0 3px 10px #02061788; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }.resource-node:hover { border-color: var(--accent); transform: translateY(-1px); }.resource-node.selected { box-shadow: 0 0 0 2px #e2e8f0, 0 4px 12px #02061788; }.resource-topline { display: flex; justify-content: space-between; align-items: center; }.resource-kind { color: #b8c7d9; font-weight: 750; font-size: .62rem; letter-spacing: .08em; text-transform: uppercase; }.resource-name { padding: 5px 0 3px; color: #f1f5f9; font-weight: 650; font-size: .81rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.resource-status { color: #aab9ca; font-size: .69rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.status-dot { width: 7px; height: 7px; border-radius: 50%; }.status-dot.healthy { background: #34d399; }.status-dot.unhealthy { background: #fb7185; }.status-dot.pending { background: #fbbf24; }.react-flow__attribution { display: none; }
 .view-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }

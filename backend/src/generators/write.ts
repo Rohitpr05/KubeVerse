@@ -13,18 +13,24 @@ import type { GeneratedFileRecord } from '../workspace.js';
 // The AI describes the architecture; this function is the deterministic
 // generator that actually produces the project (KUBEVERSE_MASTER_SPEC.md,
 // "Code generator" - same spec in, same files out, every time). `project`
-// identifies which KubeVerse project this generation belongs to, so the
-// Kubernetes manifests can carry ownership labels (backend/src/ownership.ts)
-// - Docker Compose output does not need them, since KubeVerse's project
-// scoping only applies to the real Kubernetes observer/Playground.
-export function planGeneratedFiles(spec: ArchitectureSpec, project: ProjectContext): GeneratedFile[] {
+// identifies which KubeVerse project this generation belongs to: the
+// Kubernetes manifests use it for ownership labels (backend/src/ownership.ts),
+// and both the Kubernetes manifests and the Docker Compose file use it (via
+// generators/imageName.ts) to derive the exact same local image name for
+// each service, so Kubernetes never ends up referencing a different image
+// than what Docker actually built.
+export async function planGeneratedFiles(spec: ArchitectureSpec, project: ProjectContext): Promise<GeneratedFile[]> {
   const files: GeneratedFile[] = [];
   for (const service of spec.services) {
     if (!isManagedRuntime(service.runtime)) {
       for (const file of generateNodeService(service, spec)) files.push({ path: `generated/${file.path}`, contents: file.contents });
     }
   }
-  files.push(generateDockerCompose(spec));
+  // Host-port allocation needs a real (async) OS-level availability check
+  // (generators/hostPort.ts) - everything else here stays synchronous/pure.
+  // Both generators take the same `project` so imageName.ts's
+  // getProjectImageName produces one shared image name for both outputs.
+  files.push(await generateDockerCompose(spec, project));
   files.push(...generateKubernetesManifests(spec, project));
   return files;
 }
