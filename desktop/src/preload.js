@@ -17,6 +17,12 @@
 //     (desktop/src/updater.js) - a real download or restart-to-install only
 //     ever happens because the renderer explicitly called one of these in
 //     response to the user's own click, never automatically from here.
+//   - signInWithGoogle/signOut/getAuthState/onAuthState: the *only* surface
+//     for the Phase 5 Google identity flow (desktop/src/authController.js).
+//     The renderer never receives an OAuth access/refresh token, a client
+//     secret, or any Node/shell/filesystem capability through this - only
+//     the minimal identity object (sub/email/name/picture) and a signedIn
+//     boolean, exactly as returned by authController.js's own IPC handlers.
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('kubeverseDesktop', {
@@ -36,5 +42,14 @@ contextBridge.exposeInMainWorld('kubeverseDesktop', {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on('kubeverse:update-state', listener);
     return () => ipcRenderer.removeListener('kubeverse:update-state', listener);
+  },
+
+  signInWithGoogle: () => ipcRenderer.invoke('kubeverse:auth-sign-in'),
+  signOutOfGoogle: () => ipcRenderer.invoke('kubeverse:auth-sign-out'),
+  getAuthState: () => ipcRenderer.invoke('kubeverse:auth-get-state'),
+  onAuthState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('kubeverse:auth-state', listener);
+    return () => ipcRenderer.removeListener('kubeverse:auth-state', listener);
   },
 });

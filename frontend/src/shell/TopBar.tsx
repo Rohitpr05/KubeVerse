@@ -1,5 +1,6 @@
 import type { ProjectSummary } from '../api';
 import kubeverseMark from '../assets/kubeverse-mark-on-dark.svg';
+import { AccountMenu } from '../components/AccountMenu';
 
 export function TopBar({ backendOnline, installationId, currentProject, onSwitchProject }: {
   backendOnline: boolean;
@@ -18,6 +19,7 @@ export function TopBar({ backendOnline, installationId, currentProject, onSwitch
       <div className="topbar-right">
         <span className="connection"><span className={backendOnline ? 'online-dot' : 'offline-dot'} /> {backendOnline ? 'Local Ready' : 'Backend Unreachable'}</span>
         {installationId && <span className="install-id">{installationId}</span>}
+        <AccountMenu />
       </div>
     </header>
   );

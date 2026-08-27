@@ -29,6 +29,10 @@ This starts the backend (`http://localhost:4000`) and the frontend (`http://loca
 
 Desktop builds are currently under development (Electron, `desktop/`) — there are no Windows/Linux downloads yet. `npm run desktop:dev` runs the same app as above inside a desktop window instead of a browser tab; see [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTER_SPEC.md)'s Phase 3 roadmap for the current state. Maintainers cutting an actual release should follow [`RELEASING.md`](RELEASING.md).
 
+## Signing in with Google (optional, desktop only)
+
+The desktop app can identify you with "Continue with Google" during first-launch onboarding, or later from the account menu in the top bar. This only identifies who's using KubeVerse — it never uploads or syncs projects, generated code, or your AI provider key; those stay on your machine regardless of whether you're signed in. Signing in is entirely optional: skipping it (or working offline) doesn't disable anything local. Building the desktop app with sign-in enabled requires your own Google OAuth "Desktop app" client ID — see [`desktop/.env.example`](desktop/.env.example).
+
 ## Configuring an AI provider
 
 Open the app, go to **Settings**, choose a model, and paste an OpenRouter API key. **Save**, then **Test Connection** to confirm it's valid. The key is stored at `~/.kubeverse/settings.json` with owner-only file permissions — never in this repository, never committed, never sent anywhere but OpenRouter. This is a documented development-mode fallback; see the master spec's §7 for the planned production (OS keychain) design.

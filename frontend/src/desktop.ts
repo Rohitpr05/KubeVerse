@@ -5,6 +5,7 @@
 // (UpdateBanner.tsx) are both gated on isDesktopApp() and simply never
 // appear in a browser tab.
 import type { UpdateState } from './updateLogic';
+import type { AuthState, SignInResult } from './authLogic';
 
 export interface KubeverseDesktopBridge {
   isDesktop: true;
@@ -15,6 +16,10 @@ export interface KubeverseDesktopBridge {
   downloadUpdate: () => Promise<void>;
   quitAndInstall: () => Promise<void>;
   onUpdateState: (callback: (state: UpdateState) => void) => () => void;
+  signInWithGoogle: () => Promise<SignInResult>;
+  signOutOfGoogle: () => Promise<boolean>;
+  getAuthState: () => Promise<AuthState>;
+  onAuthState: (callback: (state: AuthState) => void) => () => void;
 }
 
 declare global {
@@ -55,4 +60,26 @@ export function quitAndInstall(): Promise<void> {
 // isDesktopApp() check of their own before subscribing.
 export function onUpdateState(callback: (state: UpdateState) => void): () => void {
   return window.kubeverseDesktop?.onUpdateState(callback) ?? (() => {});
+}
+
+// Google sign-in is desktop-only by design (KUBEVERSE_MASTER_SPEC.md,
+// "Desktop OAuth architecture") - it needs the main process's loopback
+// server, system-browser launch, and OS-native safeStorage, none of which
+// exist in browser dev mode. Every function here degrades the same way the
+// update-check functions above do: a safe no-op/signed-out default, never a
+// thrown error, so callers never need their own isDesktopApp() branch.
+export function signInWithGoogle(): Promise<SignInResult> {
+  return window.kubeverseDesktop?.signInWithGoogle() ?? Promise.resolve({ success: false, error: 'Sign-in is only available in the desktop app.' });
+}
+
+export function signOutOfGoogle(): Promise<boolean> {
+  return window.kubeverseDesktop?.signOutOfGoogle() ?? Promise.resolve(true);
+}
+
+export function getAuthState(): Promise<AuthState> {
+  return window.kubeverseDesktop?.getAuthState() ?? Promise.resolve({ signedIn: false });
+}
+
+export function onAuthState(callback: (state: AuthState) => void): () => void {
+  return window.kubeverseDesktop?.onAuthState(callback) ?? (() => {});
 }

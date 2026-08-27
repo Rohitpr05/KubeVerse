@@ -10,13 +10,14 @@
 // the plain npm package instead, which only exports the path to the
 // electron binary (for spawning it externally), leaving app/BrowserWindow
 // undefined.
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron');
 const { join } = require('node:path');
 const { existsSync } = require('node:fs');
 const { getFreePort, waitForHealth, startBackendProcess, stopBackendProcess } = require('./backendProcess.js');
 const { resolveAppPaths } = require('./appPaths.js');
 const { readSetupComplete, writeSetupComplete } = require('./setupState.js');
 const { createUpdateController } = require('./updater.js');
+const { createAuthController } = require('./authController.js');
 
 // Electron resolves the app's userData directory from the app's *name*,
 // which for an unpackaged `electron .` run comes from this package.json's
@@ -55,6 +56,22 @@ ipcMain.handle('kubeverse:set-setup-complete', () => { writeSetupComplete(setupS
 // the instant the renderer asks, without depending on load-order relative
 // to main().
 const updateController = createUpdateController({ app, ipcMain, getMainWindow: () => mainWindow });
+// Google identifies the user only - it never gates local functionality
+// (KUBEVERSE_MASTER_SPEC.md, "Product principle"). No client ID means
+// "Sign in with Google" is simply unavailable in this build (authLogic.ts's
+// signInDisabledReason), never a broken/erroring button - client IDs are
+// not secret (unlike a client secret, which this app never requests, sends,
+// or stores at all - see googleAuth.js), so reading it from an env var here
+// is a deliberately simple, no-new-dependency config mechanism rather than
+// a bundled-file/build-step one.
+const authController = createAuthController({
+  app,
+  shell,
+  ipcMain,
+  safeStorage,
+  getMainWindow: () => mainWindow,
+  clientId: process.env.KUBEVERSE_GOOGLE_CLIENT_ID,
+});
 
 // Electron's own built-in "am I running from source (`electron .`) vs a
 // packaged/installed build" signal - true whenever `desktop:dev` launches

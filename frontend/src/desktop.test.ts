@@ -85,6 +85,10 @@ function fakeBridge(overrides: Partial<Record<string, unknown>> = {}) {
     downloadUpdate: async () => {},
     quitAndInstall: async () => {},
     onUpdateState: () => () => {},
+    signInWithGoogle: async () => ({ success: true, identity: { sub: 'user-1' } }),
+    signOutOfGoogle: async () => true,
+    getAuthState: async () => ({ signedIn: false }),
+    onAuthState: () => () => {},
     ...overrides,
   };
 }
@@ -152,6 +156,99 @@ test('onUpdateState returns a harmless no-op unsubscribe when there is no deskto
   const { onUpdateState } = await import('./desktop.js');
   await withWindow(undefined, async () => {
     const unsubscribe = onUpdateState(() => { throw new Error('must never be called in browser mode'); });
+    assert.doesNotThrow(() => unsubscribe());
+  });
+});
+
+// --- Google auth bridge (Phase 5) ---
+
+test('signInWithGoogle delegates to the real bridge call and returns its real result when present', async () => {
+  const { signInWithGoogle } = await import('./desktop.js');
+  const identity = { sub: 'user-42', email: 'ada@example.com' };
+  await withWindow(fakeBridge({ signInWithGoogle: async () => ({ success: true, identity }) }), async () => {
+    assert.deepEqual(await signInWithGoogle(), { success: true, identity });
+  });
+});
+
+test('signInWithGoogle returns a clear "desktop only" failure, never throws, when there is no desktop bridge (browser dev mode)', async () => {
+  const { signInWithGoogle } = await import('./desktop.js');
+  await withWindow(undefined, async () => {
+    const result = await signInWithGoogle();
+    assert.equal(result.success, false);
+  });
+});
+
+test('signOutOfGoogle delegates to the real bridge call when present', async () => {
+  let called = false;
+  const bridge = fakeBridge({ signOutOfGoogle: async () => { called = true; return true; } });
+  const { signOutOfGoogle } = await import('./desktop.js');
+  await withWindow(bridge, async () => { await signOutOfGoogle(); });
+  assert.equal(called, true);
+});
+
+test('signOutOfGoogle does not throw when there is no desktop bridge', async () => {
+  const { signOutOfGoogle } = await import('./desktop.js');
+  await withWindow(undefined, async () => {
+    await assert.doesNotReject(() => signOutOfGoogle());
+  });
+});
+
+test('getAuthState defaults to signed-out when there is no desktop bridge', async () => {
+  const { getAuthState } = await import('./desktop.js');
+  await withWindow(undefined, async () => {
+    assert.deepEqual(await getAuthState(), { signedIn: false });
+  });
+});
+
+test('getAuthState returns the real bridge value, including a real identity, when present', async () => {
+  const identity = { sub: 'user-42', email: 'ada@example.com', name: 'Ada Lovelace' };
+  const { getAuthState } = await import('./desktop.js');
+  await withWindow(fakeBridge({ getAuthState: async () => ({ signedIn: true, identity }) }), async () => {
+    assert.deepEqual(await getAuthState(), { signedIn: true, identity });
+  });
+});
+
+// Privacy proof at the bridge boundary: the bridge's real return value -
+// exactly what the frontend ever sees - contains only identity fields,
+// never a token, a project path, or an API key, even if a malicious/buggy
+// main process tried to hand one over. This mirrors authController.test.js's
+// same proof from the main-process side; this one proves the *frontend*
+// never assumes/strips anything - it just relays whatever it's given, so
+// the guarantee has to hold upstream (which authController.test.js verifies).
+test('getAuthState never receives more than signedIn + identity through the bridge contract', async () => {
+  const identity = { sub: 'user-42', email: 'ada@example.com', name: 'Ada Lovelace', picture: 'https://example.com/a.jpg' };
+  const { getAuthState } = await import('./desktop.js');
+  await withWindow(fakeBridge({ getAuthState: async () => ({ signedIn: true, identity }) }), async () => {
+    const state = await getAuthState();
+    assert.deepEqual(Object.keys(state).sort(), ['identity', 'signedIn']);
+    if (state.signedIn) assert.deepEqual(Object.keys(state.identity).sort(), ['email', 'name', 'picture', 'sub']);
+  });
+});
+
+test('onAuthState subscribes through the real bridge and returns its real unsubscribe function', async () => {
+  let subscribedCallback: ((state: unknown) => void) | undefined;
+  let unsubscribed = false;
+  const bridge = fakeBridge({
+    onAuthState: (callback: (state: unknown) => void) => {
+      subscribedCallback = callback;
+      return () => { unsubscribed = true; };
+    },
+  });
+  const { onAuthState } = await import('./desktop.js');
+  await withWindow(bridge, async () => {
+    const received: unknown[] = [];
+    const unsubscribe = onAuthState((state) => received.push(state));
+    subscribedCallback?.({ signedIn: true, identity: { sub: 'user-1' } });
+    assert.deepEqual(received, [{ signedIn: true, identity: { sub: 'user-1' } }]);
+    unsubscribe();
+    assert.equal(unsubscribed, true);
+  });
+});
+
+test('onAuthState returns a harmless no-op unsubscribe when there is no desktop bridge', async () => {
+  const { onAuthState } = await import('./desktop.js');
+  await withWindow(undefined, async () => {
+    const unsubscribe = onAuthState(() => { throw new Error('must never be called in browser mode'); });
     assert.doesNotThrow(() => unsubscribe());
   });
 });

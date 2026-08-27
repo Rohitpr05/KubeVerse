@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom';
 // matter what z-index it was given. Escaping to document.body sidesteps
 // that entirely, and keeps this component reusable for any future toolbar
 // popover, not just the resource-kind filter list.
-export function PopoverDropdown({ label, children }: { label: string; children: ReactNode }) {
+export function PopoverDropdown({ label, children, className }: { label: ReactNode; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{ top: number; right: number }>();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -47,7 +47,7 @@ export function PopoverDropdown({ label, children }: { label: string; children: 
 
   return (
     <div className="popover-anchor">
-      <button type="button" ref={triggerRef} className="popover-trigger" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <button type="button" ref={triggerRef} className={`popover-trigger${className ? ` ${className}` : ''}`} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         {label}
       </button>
       {open && position && createPortal(
