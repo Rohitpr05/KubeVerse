@@ -13,6 +13,11 @@ export interface PublicSettings {
   aiProvider: 'openrouter';
   model: string;
   hasApiKey: boolean;
+  // The real fallback model the backend actually uses when no custom model
+  // is configured (backend/src/local/settings.ts's DEFAULT_OPENROUTER_MODEL)
+  // - shown in Settings so the model field's placeholder reflects the truth
+  // instead of a hardcoded string that could silently drift from it.
+  defaultModel: string;
 }
 
 export interface EnvironmentStatus {

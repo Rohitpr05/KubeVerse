@@ -61,6 +61,13 @@ export function SettingsView() {
       if (apiKey.trim()) patch.apiKey = apiKey.trim();
       const next = await api.saveSettings(patch);
       setSettings(next);
+      // The backend resolves an empty/blank model to its own real default
+      // rather than persisting something unusable (backend/src/local/
+      // settings.ts's normalizeModel) - reflect whatever was *actually*
+      // saved back into the input, so a cleared field visibly becomes the
+      // real default instead of silently staying blank on screen while a
+      // different value is what's actually in effect.
+      setModel(next.model);
       setApiKey('');
       setSaveMessage('Saved.');
     } catch (error) {
@@ -99,7 +106,8 @@ export function SettingsView() {
       <section className="settings-card">
         <h2>AI Provider</h2>
         <label>Provider<select value="openrouter" disabled><option value="openrouter">OpenRouter</option></select></label>
-        <label>Model<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="openai/gpt-4o-mini" /></label>
+        <label>Model<input value={model} onChange={(event) => setModel(event.target.value)} placeholder={settings?.defaultModel ?? 'Loading default…'} /></label>
+        <p className="muted">Default model is used unless you choose another OpenRouter model. Clearing this field and saving restores the default ({settings?.defaultModel ?? '…'}).</p>
         <label>API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={settings?.hasApiKey ? '••••••••••••••••••••' : 'sk-or-...'} /></label>
         <p className="muted">Your API key is stored locally on this machine, at <code>~/.kubeverse/settings.json</code>. It is never committed to a project, never sent to KubeVerse, and only ever sent to the AI provider you configure here. A production desktop build will move this to OS keychain storage.</p>
         <div className="settings-actions">

@@ -13,7 +13,7 @@
 const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron');
 const { join } = require('node:path');
 const { existsSync } = require('node:fs');
-const { getFreePort, waitForHealth, startBackendProcess, stopBackendProcess } = require('./backendProcess.js');
+const { getFreePort, waitForHealth, startBackendProcess, stopBackendProcess, backendEnv } = require('./backendProcess.js');
 const { resolveAppPaths } = require('./appPaths.js');
 const { readSetupComplete, writeSetupComplete } = require('./setupState.js');
 const { createUpdateController } = require('./updater.js');
@@ -191,8 +191,9 @@ async function startProductionBackend() {
 
   backendChild = startBackendProcess({
     entryPath: backendEntry,
-    env: {
-      ...process.env,
+    // backendEnv strips NODE_OPTIONS unconditionally - see its own comment
+    // in backendProcess.js for why (investigated live, not assumed).
+    env: backendEnv(process.env, {
       // The child is spawned via process.execPath, which - inside a running
       // Electron app - IS the Electron binary, not a plain `node` executable.
       // ELECTRON_RUN_AS_NODE is Electron's own documented mechanism for
@@ -206,7 +207,7 @@ async function startProductionBackend() {
       PLATFORM_HOST: '127.0.0.1',
       PLATFORM_STATIC_DIR: staticDir,
       ...resolveAppPaths(app),
-    },
+    }),
   });
   backendChild.stdout?.on('data', (chunk) => process.stdout.write(`[backend] ${chunk}`));
   backendChild.stderr?.on('data', (chunk) => process.stderr.write(`[backend] ${chunk}`));

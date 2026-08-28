@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createServer } = require('node:net');
-const { getFreePort, waitForHealth, startBackendProcess, stopBackendProcess } = require('./backendProcess.js');
+const { getFreePort, waitForHealth, startBackendProcess, stopBackendProcess, backendEnv } = require('./backendProcess.js');
 
 function listenOn(port) {
   return new Promise((resolve, reject) => {
@@ -106,6 +106,45 @@ test('stopBackendProcess resolves immediately (does not hang) for a process that
   const start = Date.now();
   await stopBackendProcess(child, { timeoutMs: 5000 });
   assert.ok(Date.now() - start < 200, 'must not wait out the timeout for an already-exited process');
+});
+
+// --- backendEnv ---
+
+// Regression test for the real question this task asked to investigate:
+// "is [NODE_OPTIONS] being inherited by the spawned backend, does removing
+// it affect anything". Verified live first (checked /proc/<pid>/environ on
+// a real packaged run - see backendProcess.js's own comment) that Electron
+// already strips it before this code runs; this still removes it
+// explicitly and unconditionally, rather than depending on that undocumented
+// upstream behavior.
+test('backendEnv strips NODE_OPTIONS from the base environment, unconditionally', () => {
+  const base = { ...process.env, NODE_OPTIONS: '--max-old-space-size=4096', PATH: '/usr/bin' };
+  const result = backendEnv(base, {});
+  assert.equal('NODE_OPTIONS' in result, false);
+  assert.equal(result.PATH, '/usr/bin');
+});
+
+test('backendEnv leaves every other environment variable untouched', () => {
+  const base = { HOME: '/home/user', LANG: 'en_US.UTF-8', NODE_OPTIONS: '--inspect' };
+  const result = backendEnv(base, {});
+  assert.equal(result.HOME, '/home/user');
+  assert.equal(result.LANG, 'en_US.UTF-8');
+});
+
+test('backendEnv applies KubeVerse\'s own required overrides on top, after stripping NODE_OPTIONS', () => {
+  const base = { NODE_OPTIONS: '--inspect', PLATFORM_PORT: 'stale-value' };
+  const result = backendEnv(base, { PLATFORM_PORT: '4123', ELECTRON_RUN_AS_NODE: '1' });
+  assert.equal(result.PLATFORM_PORT, '4123');
+  assert.equal(result.ELECTRON_RUN_AS_NODE, '1');
+  assert.equal('NODE_OPTIONS' in result, false);
+});
+
+test('backendEnv is a no-op for NODE_OPTIONS when it was never set in the base environment', () => {
+  const base = { PATH: '/usr/bin' };
+  const result = backendEnv(base, { EXTRA: 'value' });
+  assert.equal('NODE_OPTIONS' in result, false);
+  assert.equal(result.PATH, '/usr/bin');
+  assert.equal(result.EXTRA, 'value');
 });
 
 test('stopBackendProcess falls back to SIGKILL if the process ignores SIGTERM, rather than hanging indefinitely', async () => {

@@ -1,5 +1,6 @@
 import { validateArchitectureSpec, type ArchitectureSpec } from './schema.js';
 import { getProvider } from './providers/registry.js';
+import { normalizeModel } from '../local/settings.js';
 import type { AiProvider } from './providers/types.js';
 
 export interface CompileSuccess {
@@ -39,9 +40,20 @@ export async function compileArchitecture(
   if (!source.trim()) return { success: false, errors: ['Architecture description is empty.'] };
   if (!request.apiKey) return { success: false, errors: ['No AI provider API key is configured. Add one in Settings.'] };
 
+  // Final safety net before the provider request is built (§ "the backend is
+  // the final safety net"): resolves an empty/missing model to
+  // DEFAULT_OPENROUTER_MODEL regardless of whether readSettings() already
+  // did the same - this function's own contract must hold for any caller,
+  // not just today's one route that happens to go through readSettings()
+  // first. This is what fixes the real reported bug at its root: OpenRouter
+  // rejecting a request with `"model": ""` ("No models provided") can no
+  // longer happen from this function, independent of what state
+  // ~/.kubeverse/settings.json happens to be in.
+  const model = normalizeModel(request.model);
+
   let raw: string;
   try {
-    raw = await provider.compileArchitecture(source, { model: request.model, apiKey: request.apiKey });
+    raw = await provider.compileArchitecture(source, { model, apiKey: request.apiKey });
   } catch (error) {
     return { success: false, errors: [error instanceof Error ? error.message : 'AI provider request failed.'] };
   }

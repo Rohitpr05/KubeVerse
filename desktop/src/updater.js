@@ -16,9 +16,14 @@
 // and Update" in the renderer (§12 - "Do NOT force updates immediately...
 // Do not silently restart").
 const { autoUpdater } = require('electron-updater');
-const { sanitizeUpdateError } = require('./sanitizeUpdateError.js');
+const { sanitizeUpdateError, describeErrorForLog, createSanitizedUpdaterLogger } = require('./sanitizeUpdateError.js');
 
 function createUpdateController({ app, ipcMain, getMainWindow }) {
+  // Must be set before any checkForUpdates()/downloadUpdate() call - see
+  // createSanitizedUpdaterLogger's own comment for exactly what this
+  // replaces and why (electron-updater's own internal error logging,
+  // independent of this file's explicit 'error' listener below).
+  autoUpdater.logger = createSanitizedUpdaterLogger();
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
@@ -46,12 +51,14 @@ function createUpdateController({ app, ipcMain, getMainWindow }) {
   // Covers every real failure mode honestly, including "offline" and "this
   // repository has no published releases yet / is private" (§15/§16) -
   // never thrown further up, never crashes the app, never blocks startup.
-  // The real error (which can be a raw multi-line HTTP/library dump -
-  // confirmed live for a real "no GitHub release published yet" 404) is
-  // logged in full here for debugging; only sanitizeUpdateError's clean,
-  // generic sentence ever reaches the renderer.
+  // The console only ever sees describeErrorForLog's safe, structured
+  // summary (e.g. "HTTP 404") - never the raw error object, whose .message/
+  // .stack can be a multi-line dump of the request URL, every response
+  // header, and Set-Cookie session cookies (confirmed live - see
+  // sanitizeUpdateError.js's own comment for exactly how). The renderer
+  // only ever sees sanitizeUpdateError's clean, generic sentence.
   autoUpdater.on('error', (error) => {
-    console.error('KubeVerse update check failed:', error);
+    console.error('KubeVerse update check failed:', describeErrorForLog(error));
     broadcast({ status: 'error', message: sanitizeUpdateError(error) });
   });
 
@@ -62,7 +69,7 @@ function createUpdateController({ app, ipcMain, getMainWindow }) {
     try {
       await autoUpdater.checkForUpdates();
     } catch (error) {
-      console.error('KubeVerse update check failed:', error);
+      console.error('KubeVerse update check failed:', describeErrorForLog(error));
       broadcast({ status: 'error', message: sanitizeUpdateError(error) });
     }
   }
@@ -73,7 +80,7 @@ function createUpdateController({ app, ipcMain, getMainWindow }) {
     try {
       await autoUpdater.downloadUpdate();
     } catch (error) {
-      console.error('KubeVerse update download failed:', error);
+      console.error('KubeVerse update download failed:', describeErrorForLog(error));
       broadcast({ status: 'error', message: sanitizeUpdateError(error) });
     }
   });

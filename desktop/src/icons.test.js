@@ -53,3 +53,36 @@ test('the packaged icon.png is actually bundled into the app via extraResources,
   assert.ok(entry, 'expected an extraResources entry copying an icon into the packaged app (to: "icon.png")');
   assert.equal(entry.from, 'build/icon.png');
 });
+
+// Investigated per the Phase 5 follow-up's request ("determine whether the
+// current appId is stable and appropriate"): dev.kubeverse.desktop is a
+// well-formed reverse-DNS id, unchanged since it was first set, and nothing
+// found during this investigation implicated it in the gear-icon report -
+// it is left as-is, not changed without a demonstrated reason.
+test('appId is a stable, well-formed reverse-DNS identifier', () => {
+  assert.equal(desktopPkg.build.appId, 'dev.kubeverse.desktop');
+  assert.match(desktopPkg.build.appId, /^[a-z0-9]+(\.[a-z0-9-]+)+$/, 'appId should be lowercase, dot-separated, reverse-DNS style');
+});
+
+// The real Linux runtime-identity chain (confirmed by directly extracting a
+// real AppImage/.deb build and reading their actual generated .desktop
+// files - not assumed): electron-builder's LinuxTargetHelper computes both
+// the .desktop file's Name= and its StartupWMClass= from `desktopName`
+// (minus the ".desktop" suffix) whenever `linux.syncDesktopName: true` -
+// which must therefore agree with `productName`, since Electron's own
+// runtime app identity (what a real running window's app_id/WM_CLASS
+// actually is) comes from `productName`/`app.getName()`, not `desktopName`
+// directly. If these three ever drifted apart, GNOME/any desktop
+// environment's app_id-to-.desktop-file lookup - the actual mechanism that
+// decides which icon a running window's dock entry shows - would silently
+// stop matching, exactly the class of bug this whole investigation was
+// about.
+test('desktopName, productName, and syncDesktopName agree - the runtime window identity electron-builder\'s .desktop entry expects', () => {
+  assert.equal(desktopPkg.build.linux.syncDesktopName, true);
+  assert.equal(desktopPkg.desktopName, `${desktopPkg.productName}.desktop`);
+  assert.equal(desktopPkg.build.productName, desktopPkg.productName);
+});
+
+test('both Linux packaging targets (AppImage and deb) are configured, so both packaging modes can be built and compared', () => {
+  assert.deepEqual(desktopPkg.build.linux.target, ['AppImage', 'deb']);
+});
