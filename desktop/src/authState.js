@@ -1,8 +1,18 @@
-// Local, encrypted-at-rest persistence for "who is signed in with Google"
-// (KUBEVERSE_MASTER_SPEC.md, "Local-first privacy") - never project data,
-// never API keys, never generated code; a completely separate concern from
-// backend/src/local/settings.ts's AI-provider storage and from
-// setupState.js's onboarding flag, living in its own file.
+// Local, encrypted-at-rest persistence for "who is signed in" (Phase 6:
+// Firebase Authentication, brokering a real Google sign-in - see
+// firebaseAuth.js/authController.js) (KUBEVERSE_MASTER_SPEC.md,
+// "Local-first privacy") - never project data, never API keys, never
+// generated code; a completely separate concern from backend/src/local/
+// settings.ts's AI-provider storage and from setupState.js's onboarding
+// flag, living in its own file.
+//
+// `identity.uid` is the Firebase UID (Identity Toolkit's `localId`) - the
+// stable internal account identifier, never email (a user can change their
+// Google account's email; their Firebase UID never changes for that
+// account). The refresh token persisted here is likewise Firebase's own
+// (from firebaseAuth.js's exchange), not Google's - Google's own access/
+// refresh tokens are discarded immediately after the Firebase exchange,
+// since nothing in KubeVerse calls any other Google API with them.
 //
 // encrypt/decrypt are injected, not required here, for two reasons: (1) the
 // real implementation is Electron's safeStorage (OS Keychain/DPAPI/
@@ -28,11 +38,11 @@ function readAuthState(filePath, decrypt) {
   if (!existsSync(filePath)) return null;
   try {
     const raw = JSON.parse(readFileSync(filePath, 'utf8'));
-    if (!raw || typeof raw !== 'object' || !raw.identity || typeof raw.identity.sub !== 'string' || !raw.identity.sub) {
+    if (!raw || typeof raw !== 'object' || !raw.identity || typeof raw.identity.uid !== 'string' || !raw.identity.uid) {
       return null;
     }
     const identity = {
-      sub: raw.identity.sub,
+      uid: raw.identity.uid,
       email: typeof raw.identity.email === 'string' ? raw.identity.email : undefined,
       name: typeof raw.identity.name === 'string' ? raw.identity.name : undefined,
       picture: typeof raw.identity.picture === 'string' ? raw.identity.picture : undefined,
@@ -51,7 +61,7 @@ function writeAuthState(filePath, state, encrypt) {
   const encryptedRefreshToken = state.refreshToken ? encrypt(state.refreshToken).toString('base64') : undefined;
   const payload = {
     identity: {
-      sub: state.identity.sub,
+      uid: state.identity.uid,
       email: state.identity.email,
       name: state.identity.name,
       picture: state.identity.picture,

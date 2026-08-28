@@ -64,6 +64,10 @@ test('a full sign-in round trip: real loopback server + real PKCE + real redirec
     assert.deepEqual(result.identity, { sub: 'user-42', email: 'ada@example.com', name: 'Ada Lovelace', picture: 'https://example.com/a.jpg' });
     assert.equal(result.refreshToken, 'fake-refresh-token');
     assert.equal(result.accessToken, 'fake-access-token');
+    // The raw ID token (not just its decoded identity) is returned too -
+    // Phase 6's firebaseAuth.js needs the actual signed JWT to exchange for
+    // a Firebase session, not KubeVerse's own local decoding of it.
+    assert.equal(result.idToken, idToken);
 
     // Real proof the token exchange never sends a client_secret - the
     // actual POST body this module sent to the token endpoint, inspected

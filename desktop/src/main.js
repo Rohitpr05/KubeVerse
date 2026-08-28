@@ -57,13 +57,17 @@ ipcMain.handle('kubeverse:set-setup-complete', () => { writeSetupComplete(setupS
 // to main().
 const updateController = createUpdateController({ app, ipcMain, getMainWindow: () => mainWindow });
 // Google identifies the user only - it never gates local functionality
-// (KUBEVERSE_MASTER_SPEC.md, "Product principle"). No client ID means
-// "Sign in with Google" is simply unavailable in this build (authLogic.ts's
-// signInDisabledReason), never a broken/erroring button - client IDs are
-// not secret (unlike a client secret, which this app never requests, sends,
-// or stores at all - see googleAuth.js), so reading it from an env var here
-// is a deliberately simple, no-new-dependency config mechanism rather than
-// a bundled-file/build-step one.
+// (KUBEVERSE_MASTER_SPEC.md, "Product principle"). Missing configuration
+// (either variable) means "Continue with Google" is simply unavailable in
+// this build, never a broken/erroring button - see authController.js's own
+// "not configured" handling. Neither value is a secret: the OAuth client ID
+// is not confidential for a public/native client (googleAuth.js never
+// requests, sends, or stores a client *secret* at all), and Firebase's own
+// security guidance states a Web API key "does not need to be treated as
+// [a secret]" (firebaseAuth.js's own comment has the source) - unlike a
+// Firebase Admin SDK service-account key, which this app never uses. Reading
+// both from env vars is a deliberately simple, no-new-dependency config
+// mechanism rather than a bundled-file/build-step one.
 const authController = createAuthController({
   app,
   shell,
@@ -71,6 +75,7 @@ const authController = createAuthController({
   safeStorage,
   getMainWindow: () => mainWindow,
   clientId: process.env.KUBEVERSE_GOOGLE_CLIENT_ID,
+  firebaseApiKey: process.env.KUBEVERSE_FIREBASE_API_KEY,
 });
 
 // Electron's own built-in "am I running from source (`electron .`) vs a

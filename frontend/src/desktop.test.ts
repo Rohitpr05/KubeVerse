@@ -85,9 +85,9 @@ function fakeBridge(overrides: Partial<Record<string, unknown>> = {}) {
     downloadUpdate: async () => {},
     quitAndInstall: async () => {},
     onUpdateState: () => () => {},
-    signInWithGoogle: async () => ({ success: true, identity: { sub: 'user-1' } }),
+    signInWithGoogle: async () => ({ success: true, identity: { uid: 'user-1' } }),
     signOutOfGoogle: async () => true,
-    getAuthState: async () => ({ signedIn: false }),
+    getAuthState: async () => ({ status: 'signed_out' }),
     onAuthState: () => () => {},
     ...overrides,
   };
@@ -164,7 +164,7 @@ test('onUpdateState returns a harmless no-op unsubscribe when there is no deskto
 
 test('signInWithGoogle delegates to the real bridge call and returns its real result when present', async () => {
   const { signInWithGoogle } = await import('./desktop.js');
-  const identity = { sub: 'user-42', email: 'ada@example.com' };
+  const identity = { uid: 'user-42', email: 'ada@example.com' };
   await withWindow(fakeBridge({ signInWithGoogle: async () => ({ success: true, identity }) }), async () => {
     assert.deepEqual(await signInWithGoogle(), { success: true, identity });
   });
@@ -196,15 +196,15 @@ test('signOutOfGoogle does not throw when there is no desktop bridge', async () 
 test('getAuthState defaults to signed-out when there is no desktop bridge', async () => {
   const { getAuthState } = await import('./desktop.js');
   await withWindow(undefined, async () => {
-    assert.deepEqual(await getAuthState(), { signedIn: false });
+    assert.deepEqual(await getAuthState(), { status: 'signed_out' });
   });
 });
 
 test('getAuthState returns the real bridge value, including a real identity, when present', async () => {
-  const identity = { sub: 'user-42', email: 'ada@example.com', name: 'Ada Lovelace' };
+  const identity = { uid: 'user-42', email: 'ada@example.com', name: 'Ada Lovelace' };
   const { getAuthState } = await import('./desktop.js');
-  await withWindow(fakeBridge({ getAuthState: async () => ({ signedIn: true, identity }) }), async () => {
-    assert.deepEqual(await getAuthState(), { signedIn: true, identity });
+  await withWindow(fakeBridge({ getAuthState: async () => ({ status: 'signed_in', identity }) }), async () => {
+    assert.deepEqual(await getAuthState(), { status: 'signed_in', identity });
   });
 });
 
@@ -215,13 +215,13 @@ test('getAuthState returns the real bridge value, including a real identity, whe
 // same proof from the main-process side; this one proves the *frontend*
 // never assumes/strips anything - it just relays whatever it's given, so
 // the guarantee has to hold upstream (which authController.test.js verifies).
-test('getAuthState never receives more than signedIn + identity through the bridge contract', async () => {
-  const identity = { sub: 'user-42', email: 'ada@example.com', name: 'Ada Lovelace', picture: 'https://example.com/a.jpg' };
+test('getAuthState never receives more than status + identity through the bridge contract', async () => {
+  const identity = { uid: 'user-42', email: 'ada@example.com', name: 'Ada Lovelace', picture: 'https://example.com/a.jpg' };
   const { getAuthState } = await import('./desktop.js');
-  await withWindow(fakeBridge({ getAuthState: async () => ({ signedIn: true, identity }) }), async () => {
+  await withWindow(fakeBridge({ getAuthState: async () => ({ status: 'signed_in', identity }) }), async () => {
     const state = await getAuthState();
-    assert.deepEqual(Object.keys(state).sort(), ['identity', 'signedIn']);
-    if (state.signedIn) assert.deepEqual(Object.keys(state.identity).sort(), ['email', 'name', 'picture', 'sub']);
+    assert.deepEqual(Object.keys(state).sort(), ['identity', 'status']);
+    if (state.status === 'signed_in') assert.deepEqual(Object.keys(state.identity).sort(), ['email', 'name', 'picture', 'uid']);
   });
 });
 
@@ -238,8 +238,8 @@ test('onAuthState subscribes through the real bridge and returns its real unsubs
   await withWindow(bridge, async () => {
     const received: unknown[] = [];
     const unsubscribe = onAuthState((state) => received.push(state));
-    subscribedCallback?.({ signedIn: true, identity: { sub: 'user-1' } });
-    assert.deepEqual(received, [{ signedIn: true, identity: { sub: 'user-1' } }]);
+    subscribedCallback?.({ status: 'signed_in', identity: { uid: 'user-1' } });
+    assert.deepEqual(received, [{ status: 'signed_in', identity: { uid: 'user-1' } }]);
     unsubscribe();
     assert.equal(unsubscribed, true);
   });

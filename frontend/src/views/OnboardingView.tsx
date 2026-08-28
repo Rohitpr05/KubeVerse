@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { markSetupComplete, signInWithGoogle } from '../desktop';
 import kubeverseIcon from '../assets/kubeverse-icon-tile.svg';
+import googleLogo from '../assets/google-g-logo-dark.svg';
 import { displayName, signInButtonLabel, type GoogleIdentity } from '../authLogic';
 import { allSettled, canContinue, continueLabel, explainFailure, INITIAL_CHECKS, type Check, type CheckState } from './onboardingLogic';
 
@@ -103,7 +104,8 @@ export function OnboardingView({ onContinue }: { onContinue: () => void }) {
           {signInError && <p className="error onboarding-blocker" role="alert">{signInError}</p>}
 
           <div className="settings-actions onboarding-actions">
-            <button onClick={() => void handleGoogleSignIn()} disabled={signingIn || continuing} className="onboarding-continue">
+            <button onClick={() => void handleGoogleSignIn()} disabled={signingIn || continuing} className="onboarding-continue onboarding-google-signin">
+              <img src={googleLogo} alt="" width={18} height={18} className="account-signin-logo" aria-hidden="true" />
               {signInButtonLabel(signingIn)}
             </button>
             <button onClick={() => void finishOnboarding()} disabled={signingIn || continuing}>

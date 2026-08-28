@@ -36,7 +36,7 @@ test('readAuthState returns null when no file exists yet (signed out)', () => {
 test('writeAuthState then readAuthState round-trips the identity and decrypted refresh token', () => {
   const { dir, file } = tempFile();
   try {
-    const identity = { sub: 'user-123', email: 'user@example.com', name: 'Ada Lovelace', picture: 'https://example.com/a.jpg' };
+    const identity = { uid: 'user-123', email: 'user@example.com', name: 'Ada Lovelace', picture: 'https://example.com/a.jpg' };
     writeAuthState(file, { identity, refreshToken: 'refresh-token-value' }, fakeEncrypt);
     const result = readAuthState(file, fakeDecrypt);
     assert.deepEqual(result.identity, identity);
@@ -50,7 +50,7 @@ test('writeAuthState then readAuthState round-trips the identity and decrypted r
 test('the refresh token is never written to disk in plaintext - only the encrypted form appears in the file', () => {
   const { dir, file } = tempFile();
   try {
-    writeAuthState(file, { identity: { sub: 'user-123' }, refreshToken: 'super-secret-refresh-token' }, fakeEncrypt);
+    writeAuthState(file, { identity: { uid: 'user-123' }, refreshToken: 'super-secret-refresh-token' }, fakeEncrypt);
     const raw = require('node:fs').readFileSync(file, 'utf8');
     assert.doesNotMatch(raw, /super-secret-refresh-token/, 'plaintext refresh token must never appear in the persisted file');
     assert.match(raw, /encryptedRefreshToken/);
@@ -63,7 +63,7 @@ test('writeAuthState creates its parent directory if missing (a fresh userData d
   const dir = mkdtempSync(join(tmpdir(), 'kubeverse-auth-state-'));
   const file = join(dir, 'nested', 'deeper', 'auth-state.json');
   try {
-    writeAuthState(file, { identity: { sub: 'user-123' } }, fakeEncrypt);
+    writeAuthState(file, { identity: { uid: 'user-123' } }, fakeEncrypt);
     assert.ok(existsSync(file));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -73,7 +73,7 @@ test('writeAuthState creates its parent directory if missing (a fresh userData d
 test('writeAuthState with no refresh token omits encryptedRefreshToken entirely (e.g. safeStorage unavailable)', () => {
   const { dir, file } = tempFile();
   try {
-    writeAuthState(file, { identity: { sub: 'user-123' } }, fakeEncrypt);
+    writeAuthState(file, { identity: { uid: 'user-123' } }, fakeEncrypt);
     const result = readAuthState(file, fakeDecrypt);
     assert.equal(result.refreshToken, undefined);
   } finally {
@@ -97,7 +97,7 @@ test('a corrupt (non-JSON) auth-state file is treated as signed out, never throw
   }
 });
 
-test('a well-formed file missing a usable identity.sub is treated as signed out', () => {
+test('a well-formed file missing a usable identity.uid is treated as signed out', () => {
   const { dir, file } = tempFile();
   try {
     writeFileSync(file, JSON.stringify({ identity: { email: 'user@example.com' } }));
@@ -111,7 +111,7 @@ test('a refresh token that fails to decrypt (e.g. OS keychain entry changed/remo
   const { dir, file } = tempFile();
   try {
     writeFileSync(file, JSON.stringify({
-      identity: { sub: 'user-123' },
+      identity: { uid: 'user-123' },
       encryptedRefreshToken: Buffer.from('not-actually-encrypted-by-us').toString('base64'),
     }));
     assert.equal(readAuthState(file, fakeDecrypt), null);
@@ -120,12 +120,12 @@ test('a refresh token that fails to decrypt (e.g. OS keychain entry changed/remo
   }
 });
 
-test('an identity payload with extraneous fields is normalized to only sub/email/name/picture', () => {
+test('an identity payload with extraneous fields is normalized to only uid/email/name/picture', () => {
   const { dir, file } = tempFile();
   try {
-    writeFileSync(file, JSON.stringify({ identity: { sub: 'user-123', email: 'a@b.com', aud: 'client-id', hd: 'example.com' } }));
+    writeFileSync(file, JSON.stringify({ identity: { uid: 'user-123', email: 'a@b.com', aud: 'client-id', hd: 'example.com' } }));
     const result = readAuthState(file, fakeDecrypt);
-    assert.deepEqual(Object.keys(result.identity).sort(), ['email', 'name', 'picture', 'sub']);
+    assert.deepEqual(Object.keys(result.identity).sort(), ['email', 'name', 'picture', 'uid']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -139,7 +139,7 @@ test('clearAuthState deletes only the auth-state file, nothing else in its direc
   const { dir, file } = tempFile();
   const unrelatedFile = join(dir, 'architecture.md');
   try {
-    writeAuthState(file, { identity: { sub: 'user-123' } }, fakeEncrypt);
+    writeAuthState(file, { identity: { uid: 'user-123' } }, fakeEncrypt);
     writeFileSync(unrelatedFile, '# a real project file that must survive logout');
     clearAuthState(file);
     assert.equal(existsSync(file), false);

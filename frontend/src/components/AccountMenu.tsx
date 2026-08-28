@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getAuthState, isDesktopApp, onAuthState, signInWithGoogle, signOutOfGoogle } from '../desktop';
 import { displayName, initials, signInButtonLabel, type AuthState } from '../authLogic';
 import { PopoverDropdown } from './PopoverDropdown';
+import googleLogo from '../assets/google-g-logo-dark.svg';
 
 // The KubeVerse "account area" (KUBEVERSE_MASTER_SPEC.md, "Account UI") -
 // deliberately small: a signed-in indicator plus sign-out, or a single
@@ -12,7 +13,7 @@ import { PopoverDropdown } from './PopoverDropdown';
 // nothing at all in browser dev mode, matching UpdateBanner/OnboardingView's
 // own isDesktopApp() gating.
 export function AccountMenu() {
-  const [state, setState] = useState<AuthState>({ signedIn: false });
+  const [state, setState] = useState<AuthState>({ status: 'loading' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -29,7 +30,7 @@ export function AccountMenu() {
     setError(undefined);
     try {
       const result = await signInWithGoogle();
-      if (result.success) setState({ signedIn: true, identity: result.identity });
+      if (result.success) setState({ status: 'signed_in', identity: result.identity });
       else setError(result.error);
     } finally {
       setBusy(false);
@@ -38,13 +39,16 @@ export function AccountMenu() {
 
   async function handleSignOut() {
     await signOutOfGoogle();
-    setState({ signedIn: false });
+    setState({ status: 'signed_out' });
   }
 
-  if (!state.signedIn) {
+  if (state.status === 'loading') return null;
+
+  if (state.status !== 'signed_in') {
     return (
       <div className="account-menu">
         <button type="button" className="account-signin" onClick={() => void handleSignIn()} disabled={busy}>
+          <img src={googleLogo} alt="" width={18} height={18} className="account-signin-logo" aria-hidden="true" />
           {signInButtonLabel(busy)}
         </button>
         {error && <span className="account-error" role="alert">{error}</span>}

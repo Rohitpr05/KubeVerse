@@ -152,7 +152,15 @@ async function signInWithGoogle({
 
     const tokens = await exchangeCodeForTokens({ code, codeVerifier, redirectUri, clientId, tokenEndpoint });
     const identity = decodeIdTokenPayload(tokens.id_token);
-    return { identity, refreshToken: tokens.refresh_token, accessToken: tokens.access_token };
+    // idToken (the raw JWT, not just its decoded `identity` above) is
+    // returned so a caller can hand it to a further identity-provider
+    // exchange - added for Phase 6's Firebase exchange
+    // (firebaseAuth.js's exchangeGoogleIdTokenForFirebaseSession, which
+    // needs the actual signed token, not KubeVerse's own local decoding of
+    // it). Google's access token is returned too but nothing in this
+    // codebase calls any further Google API with it - both are discarded by
+    // the caller once the Firebase exchange (if any) completes.
+    return { identity, idToken: tokens.id_token, refreshToken: tokens.refresh_token, accessToken: tokens.access_token };
   } finally {
     server.close();
   }

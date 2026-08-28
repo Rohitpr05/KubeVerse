@@ -77,7 +77,7 @@ export function signOutOfGoogle(): Promise<boolean> {
 }
 
 export function getAuthState(): Promise<AuthState> {
-  return window.kubeverseDesktop?.getAuthState() ?? Promise.resolve({ signedIn: false });
+  return window.kubeverseDesktop?.getAuthState() ?? Promise.resolve({ status: 'signed_out' });
 }
 
 export function onAuthState(callback: (state: AuthState) => void): () => void {

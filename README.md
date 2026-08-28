@@ -31,7 +31,7 @@ Desktop builds are currently under development (Electron, `desktop/`) — there 
 
 ## Signing in with Google (optional, desktop only)
 
-The desktop app can identify you with "Continue with Google" during first-launch onboarding, or later from the account menu in the top bar. This only identifies who's using KubeVerse — it never uploads or syncs projects, generated code, or your AI provider key; those stay on your machine regardless of whether you're signed in. Signing in is entirely optional: skipping it (or working offline) doesn't disable anything local. Building the desktop app with sign-in enabled requires your own Google OAuth "Desktop app" client ID — see [`desktop/.env.example`](desktop/.env.example).
+The desktop app can identify you with "Continue with Google" during first-launch onboarding, or later from the account menu in the top bar. Google sign-in is brokered through Firebase Authentication (identity only — see [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTER_SPEC.md) §7); it only identifies who's using KubeVerse — it never uploads or syncs projects, generated code, or your AI provider key; those stay on your machine regardless of whether you're signed in. Signing in is entirely optional: skipping it (or working offline) doesn't disable anything local. Building the desktop app with sign-in enabled requires your own Google OAuth "Desktop app" client ID *and* a Firebase Web API key — see [`desktop/.env.example`](desktop/.env.example) for both.
 
 ## Configuring an AI provider
 

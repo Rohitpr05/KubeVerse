@@ -162,8 +162,9 @@ button, input, select { font: inherit; }
 .popover-section .muted { margin: 0; word-break: break-all; }
 
 .account-menu { display: flex; align-items: center; gap: 8px; }
-.account-signin { cursor: pointer; border: 1px solid #33465f; border-radius: 5px; padding: 5px 10px; background: #142036; color: #e2e8f0; font-size: .74rem; white-space: nowrap; }
+.account-signin { cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #33465f; border-radius: 5px; padding: 5px 10px; background: #142036; color: #e2e8f0; font-size: .74rem; white-space: nowrap; }
 .account-signin:disabled { opacity: .6; cursor: default; }
+.account-signin-logo { flex: none; border-radius: 3px; }
 .account-error { color: #fca5a5; font-size: .7rem; max-width: 220px; }
 .account-trigger.popover-trigger { padding: 4px 8px 4px 4px; }
 .account-chip { display: flex; align-items: center; gap: 6px; }
@@ -436,6 +437,7 @@ dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-s
 .onboarding-actions { justify-content: center; margin-top: 20px; }
 .onboarding-continue { background: #1d4ed8; border-color: #1d4ed8; color: #f8fafc; }
 .onboarding-continue:hover { background: #2563eb; }
+.onboarding-google-signin { display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
 .onboarding-blocker { margin-top: 12px; }
 
 /* --- Phase 3B: desktop auto-update banner (UpdateBanner.tsx) ---
