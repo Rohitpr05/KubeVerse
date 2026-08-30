@@ -31,10 +31,10 @@ Everything — your projects, generated code, and configuration — stays on you
 
 The current version is **v4.2.0**, packaged as:
 
-- **Linux** — `KubeVerse-4.2.0-linux-x86_64.AppImage` (portable) or `KubeVerse-4.2.0-linux-amd64.deb` (system install)
-- **Windows** — `KubeVerse-4.2.0-win-x64.exe` (installer)
+- **Linux** — [`KubeVerse-4.2.0-linux-x86_64.AppImage`](https://github.com/Rohitpr05/KubeVerse/releases/download/v4.2.0/KubeVerse-4.2.0-linux-x86_64.AppImage) (portable) or [`KubeVerse-4.2.0-linux-amd64.deb`](https://github.com/Rohitpr05/KubeVerse/releases/download/v4.2.0/KubeVerse-4.2.0-linux-amd64.deb) (system install)
+- **Windows** — [`KubeVerse-4.2.0-win-x64.exe`](https://github.com/Rohitpr05/KubeVerse/releases/download/v4.2.0/KubeVerse-4.2.0-win-x64.exe) (installer)
 
-The v4.2.0 release is still being finalized on GitHub at the time of writing, so this README links to the Releases page rather than a specific asset — once it's published, look for the assets above under the `v4.2.0` release. See [Linux](#linux) / [Windows](#windows) below for exact setup steps once you've downloaded the file for your OS.
+See [Linux](#linux) / [Windows](#windows) below for exact setup steps once you've downloaded the file for your OS.
 
 ## Using KubeVerse vs. Developing KubeVerse
 

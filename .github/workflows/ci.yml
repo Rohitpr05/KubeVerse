@@ -11,6 +11,14 @@ on:
     branches: [main]
   pull_request:
 
+# Explicit least-privilege: this workflow only ever needs to read the repo
+# and upload short-lived workflow artifacts (both covered by `contents:
+# read`) - it never publishes, comments, or writes anything back. Declared
+# explicitly rather than relying on the repository's default token
+# permissions, so this holds regardless of how that default is configured.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

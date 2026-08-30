@@ -1,11 +1,26 @@
 # Local environment overrides and generated runtime files should not be shared.
 .env
-.env.local
+.env.*
+!.env.example
 node_modules/
 coverage/
 dist/
 *.log
 .DS_Store
+
+# Defense-in-depth: none of these should ever exist in this repo, but if one
+# is ever created locally (a real credential, a downloaded kubeconfig, a
+# signing cert for release builds), it must never be committable by accident.
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+service-account*.json
+*serviceAccountKey*.json
+kubeconfig
+kubeconfig.yaml
+.kube/config
 
 # Desktop (Phase 3): electron-builder output and the staged production-only
 # backend node_modules prepare-backend-deps.js generates before packaging.
