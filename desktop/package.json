@@ -1,6 +1,6 @@
 {
   "name": "@kubeverse/desktop",
-  "version": "4.0.0",
+  "version": "4.2.0",
   "private": true,
   "type": "commonjs",
   "description": "KubeVerse desktop shell (Electron): owns the local backend process lifecycle and loads the KubeVerse UI. CommonJS deliberately, not ESM like the rest of the monorepo: Electron's own built-in `electron` module (app, BrowserWindow, ...) is a native binding that Electron's module loader only swaps in for require() - importing it under Node's own ESM loader resolves to the plain npm package instead (which only exports the path to the electron binary, for spawning it externally) and leaves app/BrowserWindow undefined. CommonJS is also what Electron's own official quickstart template uses for exactly this reason.",
