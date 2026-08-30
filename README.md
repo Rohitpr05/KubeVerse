@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="#download-kubeverse">Download</a> ·
   <a href="#installation">Installation</a> ·
   <a href="#getting-started">Getting Started</a> ·
   <a href="#key-features">Features</a> ·
@@ -18,9 +19,38 @@
 
 ---
 
-KubeVerse is an open-source desktop application. You describe a small application in plain language, KubeVerse's AI Builder turns that into a real, runnable project (source code, Dockerfiles, Docker Compose, Kubernetes manifests), and you run and observe it against your own local Docker and Kubernetes — with a live, visual explorer for what's actually happening underneath.
+KubeVerse is an open-source, native desktop application. You describe a small application in plain language, KubeVerse's AI Builder turns that into a real, runnable project (source code, Dockerfiles, Docker Compose, Kubernetes manifests), and you run and observe it against your own local Docker and Kubernetes — with a live, visual explorer for what's actually happening underneath.
 
 Everything — your projects, generated code, and configuration — stays on your machine. See [Local-First & Privacy](#local-first--privacy) for exactly what does and doesn't leave your computer.
+
+## Download KubeVerse
+
+**If you just want to use KubeVerse, you do not need to clone this repository, install Node.js, or build anything.** This source repository is for development and contribution — normal users should download the packaged desktop application from GitHub Releases.
+
+**[Get KubeVerse from the GitHub Releases page →](https://github.com/Rohitpr05/KubeVerse/releases)**
+
+The current version is **v4.2.0**, packaged as:
+
+- **Linux** — `KubeVerse-4.2.0-linux-x86_64.AppImage` (portable) or `KubeVerse-4.2.0-linux-amd64.deb` (system install)
+- **Windows** — `KubeVerse-4.2.0-win-x64.exe` (installer)
+
+The v4.2.0 release is still being finalized on GitHub at the time of writing, so this README links to the Releases page rather than a specific asset — once it's published, look for the assets above under the `v4.2.0` release. See [Linux](#linux) / [Windows](#windows) below for exact setup steps once you've downloaded the file for your OS.
+
+## Using KubeVerse vs. Developing KubeVerse
+
+**Using KubeVerse** — download and run the packaged app. The packaged desktop build already contains the frontend and backend runtime KubeVerse needs, so no Node.js, npm, or source checkout is required:
+
+```text
+GitHub Releases
+      ↓
+Download installer for your OS
+      ↓
+Install KubeVerse
+      ↓
+Launch KubeVerse
+```
+
+**Developing KubeVerse** — if you want to modify KubeVerse itself, clone the repository and follow the [Development](#development) section below, which documents the actual `npm` workflow, tests, and build commands. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full contribution process.
 
 ## Screenshots
 
@@ -65,36 +95,48 @@ KubeVerse's first-launch checklist reports the real status of each of these — 
 
 ## Installation
 
-Pre-built downloads are not yet published as GitHub Releases for this repository. The methods below describe how KubeVerse is packaged and how to install it once a build is available — either built locally via `npm run desktop:build` (see [Development](#development)) or from a future GitHub Release, per [`RELEASING.md`](RELEASING.md).
+Once you've downloaded the right file for your OS from [GitHub Releases](https://github.com/Rohitpr05/KubeVerse/releases) (see [Download KubeVerse](#download-kubeverse) above), follow the steps below.
 
 ### Linux
 
-KubeVerse packages as an **AppImage** (portable, no installation) and a **`.deb`** (installs system-wide with proper desktop/menu integration).
+KubeVerse packages as an **AppImage** (portable, no installation) and a **`.deb`** (installs system-wide with proper desktop/menu integration). Both are built for x86_64 — no other Linux architectures are currently packaged.
 
-**AppImage** — the simplest way to run KubeVerse:
+#### AppImage
 
-```bash
-chmod +x KubeVerse-<version>-linux-x86_64.AppImage
-./KubeVerse-<version>-linux-x86_64.AppImage
-```
+The portable option — runs directly, no package manager or installation step required:
 
-**`.deb`** (Debian/Ubuntu-based distributions) — installs KubeVerse with a proper application menu entry and dock icon:
+1. Download `KubeVerse-4.2.0-linux-x86_64.AppImage` from the v4.2.0 GitHub Release.
+2. Make it executable and run it:
 
 ```bash
-sudo apt install ./KubeVerse-<version>-linux-amd64.deb
+chmod +x KubeVerse-4.2.0-linux-x86_64.AppImage
+./KubeVerse-4.2.0-linux-x86_64.AppImage
 ```
 
-> The AppImage runs standalone, but without an AppImage integration tool (e.g. `AppImageLauncher`) installed on your system, it won't get a desktop menu entry or a proper dock icon on some desktop environments — this is standard AppImage behavior, not specific to KubeVerse. The `.deb` install doesn't have this limitation.
+This has been verified to run as a standalone AppImage; it is not guaranteed to work identically across every Linux distribution.
+
+#### Debian / Ubuntu
+
+`KubeVerse-4.2.0-linux-amd64.deb` is intended for Debian/Ubuntu-based distributions and installs KubeVerse with a proper application menu entry and dock icon:
+
+```bash
+sudo apt install ./KubeVerse-4.2.0-linux-amd64.deb
+```
+
+> Without an AppImage integration tool (e.g. `AppImageLauncher`) installed on your system, the AppImage won't get a desktop menu entry or a proper dock icon on some desktop environments — this is standard AppImage behavior, not specific to KubeVerse. The `.deb` install doesn't have this limitation.
 
 ### Windows
 
-KubeVerse packages as an **NSIS installer** (`KubeVerse-<version>-win-x64.exe`):
+KubeVerse packages as an **NSIS installer**:
 
-1. Download `KubeVerse-<version>-win-x64.exe`.
-2. Run the installer and follow the prompts.
-3. Launch KubeVerse from the Start Menu or your desktop shortcut.
+1. Open the [v4.2.0 GitHub Release](https://github.com/Rohitpr05/KubeVerse/releases).
+2. Download `KubeVerse-4.2.0-win-x64.exe`.
+3. Run the installer and follow the prompts.
+4. Launch KubeVerse from the Start Menu or your desktop shortcut.
 
-The installer is currently **unsigned** (no code-signing certificate is configured yet — see [`RELEASING.md`](RELEASING.md) §6), so Windows SmartScreen will show an "Unknown Publisher" warning on first run. The Windows packaging pipeline exists and runs in CI, but has not yet been verified against a real Windows machine outside of GitHub's own CI runner.
+The installer is currently **unsigned** (no code-signing certificate is configured yet — see [`RELEASING.md`](RELEASING.md) §6), so Windows SmartScreen will show an "Unknown Publisher" warning on first run.
+
+> The Windows installer is currently provided as a cross-built artifact and has not yet been independently verified on a physical Windows system. If you encounter an installation or runtime problem, please report it through [GitHub Issues](https://github.com/Rohitpr05/KubeVerse/issues).
 
 ## First Launch
 
@@ -162,6 +204,15 @@ The AI Builder never trusts an AI provider's output directly: what comes back is
 
 You provide your own AI provider API key in **Settings** (OpenRouter is the only supported provider today). The key is entered once, saved locally, and can be checked with **Test Connection**. It is never displayed back to you after saving, and is only ever sent to the provider you configured — never anywhere else, and never included in this repository or any generated file.
 
+## Google Sign-In
+
+KubeVerse's desktop app supports an optional "Continue with Google" step, offered during first-launch onboarding and available any time afterward from the account menu.
+
+- It's authentication only: it identifies which Google account is using the app, nothing more.
+- Sign-in is backed by **Firebase Authentication** — Firebase acts as the identity provider for the Google sign-in flow.
+- Signing in does not mean your Kubernetes projects, generated code, or any other local data is stored remotely. Authentication and project/data storage are entirely separate systems in KubeVerse — see [Local-First & Privacy](#local-first--privacy) below.
+- Sign-in is entirely optional. Skipping it (choosing "Skip for now") does not disable or limit any feature. If a given build doesn't have sign-in configured, "Continue with Google" reports that clearly rather than failing silently — KubeVerse still launches and works fully either way.
+
 ## Local-First & Privacy
 
 KubeVerse is built to run entirely on your machine:
@@ -169,9 +220,19 @@ KubeVerse is built to run entirely on your machine:
 - Projects, `architecture.md` files, generated source code, Dockerfiles, and Kubernetes manifests are plain files in your project directory — nothing is uploaded or synced to a KubeVerse-owned server, because there isn't one.
 - Docker and Kubernetes interactions happen directly against your own local Docker/Kubernetes — KubeVerse does not run or manage a cloud cluster.
 - Your AI provider API key is stored locally and is only ever sent to the AI provider you configured, when you compile an architecture.
-- Optional Google sign-in identifies who's using the app (via Firebase Authentication) and nothing more — it does not gate, upload, or sync any project, generated code, or Docker/Kubernetes state. See [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTER_SPEC.md) §7 for the exact data boundary.
+- Optional Google sign-in (see [Google Sign-In](#google-sign-in) above) identifies who's using the app via Firebase Authentication and nothing more — it does not gate, upload, or sync any project, generated code, or Docker/Kubernetes state. Firebase is used for authentication only in KubeVerse; no other Firebase service is involved. See [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTER_SPEC.md) §7 for the exact data boundary.
+- The packaged desktop app bundles the frontend and backend runtime KubeVerse needs to run — you don't need to separately install Node.js or any other runtime to use it.
 
 To be precise, rather than overstate this: KubeVerse itself has no cloud backend and no project database, but network requests you explicitly trigger — an AI Builder compile, or signing in with Google — do necessarily send data to that specific external provider (your AI provider, or Google/Firebase for sign-in). Nothing else leaves your machine.
+
+### Where your data lives
+
+| Data | Location |
+| --- | --- |
+| Projects (`architecture.md`, generated source, Docker/Kubernetes output) | Wherever you choose to open or create a project directory — the packaged app suggests your OS `Documents/KubeVerse` folder as a starting point, but any location works |
+| App settings, installation identity, and local auth session | An OS-standard app-config location under a `KubeVerse` folder (e.g. `~/.config/KubeVerse` on Linux, `%APPDATA%\KubeVerse` on Windows) |
+
+KubeVerse never stores your projects inside its own installation folder, and reinstalling or updating KubeVerse does not touch your project directories.
 
 ## Docker & Kubernetes Setup
 
@@ -215,7 +276,7 @@ There is currently no linter configured in this repository. See [`CONTRIBUTING.m
 KubeVerse/
 ├── backend/                  Fastify backend: Kubernetes observer + KubeVerse product API
 ├── frontend/                 React app shell: Playground, AI Builder, Architectures, Projects, Settings
-├── desktop/                  Electron desktop shell: packaging, local backend lifecycle, auto-update
+├── desktop/                  Electron desktop shell: packaging, local backend lifecycle
 ├── shared/                   @kubeverse/shared - the backend↔frontend Kubernetes contract
 ├── branding/                 Official KubeVerse logo/mark assets
 ├── examples/legacy-simulator/  Self-contained legacy demo application (not part of KubeVerse core)
@@ -239,7 +300,7 @@ Status below is drawn directly from [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTE
 | --- | --- |
 | 1 — Core Application | Project workspace, AI architecture compiler, schema validation, Docker/Kubernetes generators |
 | 2 — Playground & Simulation | Live Kubernetes topology, traffic simulation, Pod failure experiments, real Kubernetes self-healing |
-| 3 — Desktop Application | Electron shell, packaging (AppImage/`.deb`/NSIS), auto-update, first-launch onboarding |
+| 3 — Desktop Application | Electron shell, packaging (AppImage/`.deb`/NSIS), first-launch onboarding |
 | 4 — Hardening & Public-Release Readiness | Security and correctness fixes found by running the app end-to-end (CORS, path traversal, probe protocol bugs, and more) |
 | 5 — Identity, Authentication & Local-First Privacy | Optional "Continue with Google" sign-in, identity only |
 | 6 — Firebase Authentication | Google sign-in brokered through Firebase Authentication as the identity provider |
@@ -256,6 +317,19 @@ Status below is drawn directly from [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTE
 ## Educational Use
 
 KubeVerse is designed to help people learn Kubernetes and Docker concepts by watching them happen against a real, small system they built themselves — Pods, Deployments, ReplicaSets, Services, scheduling, health checks, traffic, failures, self-healing, and how Docker and Kubernetes relate to each other. It's aimed at students, educators, and anyone learning Kubernetes hands-on. It is not currently adopted by any university or institution — this is an open-source project anyone can use or teach with.
+
+## Releases
+
+Official packaged builds are distributed only through [GitHub Releases](https://github.com/Rohitpr05/KubeVerse/releases) — see [Download KubeVerse](#download-kubeverse) above. Do not download KubeVerse from any third-party binary host.
+
+- **Linux**: AppImage (portable) and a Debian/Ubuntu `.deb` package.
+- **Windows**: an NSIS `.exe` installer.
+
+Each release is tagged `vX.Y.Z` and lists the exact artifacts attached (see [`RELEASING.md`](RELEASING.md) for how a maintainer cuts one). To get a new version, check the Releases page and install it the same way as your original installation.
+
+## Security
+
+Found a security vulnerability? Please **do not** open a public GitHub issue. See [SECURITY.md](SECURITY.md) for how to report it privately.
 
 ## Contributing
 
@@ -280,4 +354,4 @@ Copyright © 2026 Rohit PR.
 
 ## Contact
 
-For security vulnerabilities, see [SECURITY.md](SECURITY.md) (do not open a public issue). For bugs and feature requests, use [GitHub Issues](https://github.com/Rohitpr05/KubeVerse/issues).
+For bugs and feature requests, use [GitHub Issues](https://github.com/Rohitpr05/KubeVerse/issues). For security vulnerabilities, see [Security](#security) above instead.
