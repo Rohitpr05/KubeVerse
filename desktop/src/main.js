@@ -159,11 +159,16 @@ async function main() {
   try {
     const targetUrl = DEV_MODE ? await waitForDevServers() : await startProductionBackend();
     await mainWindow.loadURL(targetUrl);
-    // Once per launch (§14), well after the real app has loaded - never
-    // blocking startup, and checkForUpdates() itself no-ops in dev mode.
-    // Errors (offline, no releases published yet, ...) are handled entirely
-    // inside the controller - never thrown here (§15).
-    setTimeout(() => void updateController.checkForUpdates(), 5000).unref();
+    // The automatic once-per-launch update check is deliberately disabled
+    // for this release: the full auto-update system (automatic checks,
+    // update UX polish, a supported release cadence to check against) is a
+    // later phase, not this one - a packaged build must not make an
+    // unattended GitHub request just because it launched. The update
+    // machinery itself (updater.js, IPC handlers, Settings' manual "Check
+    // for Updates" button) is untouched and still fully functional - only
+    // this automatic trigger is removed. Re-enable by restoring a
+    // `setTimeout(() => void updateController.checkForUpdates(), 5000).unref();`
+    // call here once auto-update is a supported, documented feature.
   } catch (error) {
     console.error('KubeVerse backend failed to start:', error);
     await showStartupError(String(error?.message ?? error));
