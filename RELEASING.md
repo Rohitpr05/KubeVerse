@@ -125,17 +125,65 @@ been verified.
   a local cross-compile, or code review alone.
 - Confirm the GitHub Release page shows both platform artifacts attached,
   with filenames matching `KubeVerse-<version>-<os>-<arch>.<ext>`.
+- **Confirm the update-metadata files are attached too, not just the
+  installers**: `latest.yml` (Windows) and `latest-linux.yml` (Linux) —
+  `electron-updater` reads these specifically to detect a new version; a
+  release with only the installer files uploaded (for example via a manual
+  `gh release upload` of just the `.exe`/`.deb`/`.AppImage`, rather than
+  `npm run release --workspace=@kubeverse/desktop` or the real
+  `release.yml` CI workflow) will silently be invisible to every real
+  automatic or manual update check, even though the installers themselves
+  are fine to download directly. Both `electron-builder --publish always`
+  (§5) and a plain local `npm run package --workspace=@kubeverse/desktop`
+  (§3) generate both files automatically alongside the installers in
+  `desktop/release/` — if publishing any other way, upload them too.
 
 ## 8. Auto-update
 
 Installed copies of KubeVerse check GitHub Releases for a newer version
-automatically (electron-updater, `desktop/src/updater.js`) shortly after
-launch, and again if the user clicks "Check for Updates" in Settings. This
-means: once a release is published per §5, users on an older version will
-be offered it — there is no separate "promote to users" step. See
-`KUBEVERSE_MASTER_SPEC.md`'s Phase 3B section for the full update UX.
+automatically (electron-updater, `desktop/src/updater.js`), shortly after
+the window has actually finished loading (not a fixed delay from launch —
+see `KUBEVERSE_MASTER_SPEC.md`'s Phase 7 section for exactly how that's
+anchored), and again if the user clicks "Check for Updates" in Settings.
+This means: once a release is published per §5 **with its update-metadata
+files included** (see §7 above), users on an older version will be offered
+it — there is no separate "promote to users" step.
 
-## 9. If something goes wrong
+Windows and Linux AppImage installs update fully silently (check, download,
+restart-and-install, no prompts). **Linux `.deb` installs check and download
+the same way, but installing genuinely requires a `pkexec`/`sudo` password
+prompt** — package-manager-installed Linux targets always need elevation to
+install, per `electron-builder`'s own documented behavior; this is normal
+OS-level behavior, not a KubeVerse bug, and there is nothing to configure
+around it.
+
+## 9. Checking download counts (Windows vs. Linux)
+
+GitHub's own Releases API already reports a real, per-asset download count —
+no analytics service, tracking code, or new infrastructure is needed or has
+been added:
+
+```
+gh release view vX.Y.Z --json assets
+```
+
+or, for the raw numbers:
+
+```
+gh api repos/Rohitpr05/KubeVerse/releases/tags/vX.Y.Z
+```
+
+Since each asset is already named by platform
+(`KubeVerse-<version>-win-x64.exe` vs. the two `-linux-*` assets), summing by
+filename already separates Windows from Linux downloads. Be precise about
+what this number actually means: it counts **asset downloads** (an HTTP GET
+against the asset URL) — not release-page views, not installations, and not
+application launches, and one person re-downloading the same file counts
+more than once. No other point in that funnel is currently measurable
+without adding something new (a third-party analytics service, or tracking
+code in the desktop app), and nothing like that exists in this codebase.
+
+## 10. If something goes wrong
 
 - **CI failed before publishing anything**: nothing was released — no
   GitHub Release was created, so there's nothing to clean up. Fix the
