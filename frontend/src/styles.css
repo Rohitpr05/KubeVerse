@@ -45,7 +45,15 @@ button, input, select { font: inherit; }
 .sidebar-item.active { background: #1e3a5f; color: #eaf2fd; font-weight: 600; }
 .shell-content { min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
 .playground-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.view { padding: 22px 26px 40px; max-width: 900px; }
+/* .view is the one shared page wrapper every workspace page (Playground's
+   empty state, AI Builder, Architectures, Projects, Settings) renders into -
+   fixed here once rather than per-page, so none of them can drift apart.
+   .shell-content/.playground-view are column flexboxes, so .view (capped at
+   max-width) stretches to the full cross-axis width by default and then
+   sits flush left; margin: 0 auto centers the box itself within that extra
+   space once it's narrower than the available area - real box centering,
+   not text-align, and a no-op once the viewport is already <= 900px wide. */
+.view { padding: 22px 26px 40px; max-width: 900px; margin: 0 auto; }
 .view h1 { margin: 0 0 6px; font-size: 1.3rem; }
 .settings-card { margin: 18px 0; padding: 16px 18px; border: 1px solid #26354b; border-radius: 8px; background: #0f172a; }
 .settings-card h2 { margin: 0 0 12px; font-size: .92rem; color: #dce8f6; }
