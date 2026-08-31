@@ -1,17 +1,27 @@
 import { useEffect, useState } from 'react';
 import { getAuthState, isDesktopApp, onAuthState, signInWithGoogle, signOutOfGoogle } from '../desktop';
-import { displayName, initials, signInButtonLabel, type AuthState } from '../authLogic';
+import { accountAreaMode, displayName, initials, signInButtonLabel, type AuthState } from '../authLogic';
 import { PopoverDropdown } from './PopoverDropdown';
 import googleLogo from '../assets/google-g-logo-dark.svg';
 
 // The KubeVerse "account area" (KUBEVERSE_MASTER_SPEC.md, "Account UI") -
-// deliberately small: a signed-in indicator plus sign-out, or a single
-// "Continue with Google" action when signed out. Never a SaaS-style profile
-// dashboard - Google identifies the user, nothing more, so there is nothing
-// else to show here. Desktop-only (Google sign-in needs the main process's
-// loopback server/system browser/safeStorage - see desktop.ts) - renders
-// nothing at all in browser dev mode, matching UpdateBanner/OnboardingView's
-// own isDesktopApp() gating.
+// deliberately small: a signed-in indicator plus sign-out, or a compact
+// "Sign in" trigger when signed out. Never a SaaS-style profile dashboard -
+// Google identifies the user, nothing more, so there is nothing else to show
+// here. Desktop-only (Google sign-in needs the main process's loopback
+// server/system browser/safeStorage - see desktop.ts) - renders nothing at
+// all in browser dev mode, matching UpdateBanner/OnboardingView's own
+// isDesktopApp() gating.
+//
+// Phase 7: the signed-out state used to render a full "Continue with Google"
+// button (logo + text) permanently in the top bar - a persistent branded CTA
+// that competed with the rest of the toolbar for attention on every screen,
+// even though sign-in is entirely optional (KUBEVERSE_MASTER_SPEC.md §6.2).
+// The full "Continue with Google" action still exists and is unchanged in
+// OnboardingView.tsx's own identity step - here it now lives inside a
+// compact "Sign in" popover trigger (the same PopoverDropdown pattern
+// already used for the signed-in state below), reachable but not
+// permanently on display.
 export function AccountMenu() {
   const [state, setState] = useState<AuthState>({ status: 'loading' });
   const [busy, setBusy] = useState(false);
@@ -42,20 +52,24 @@ export function AccountMenu() {
     setState({ status: 'signed_out' });
   }
 
-  if (state.status === 'loading') return null;
+  const mode = accountAreaMode(state);
+  if (mode === 'hidden') return null;
 
-  if (state.status !== 'signed_in') {
+  if (mode === 'signed-out') {
     return (
-      <div className="account-menu">
-        <button type="button" className="account-signin" onClick={() => void handleSignIn()} disabled={busy}>
-          <img src={googleLogo} alt="" width={18} height={18} className="account-signin-logo" aria-hidden="true" />
-          {signInButtonLabel(busy)}
-        </button>
-        {error && <span className="account-error" role="alert">{error}</span>}
-      </div>
+      <PopoverDropdown label="Sign in">
+        <div className="popover-section">
+          <button type="button" className="account-signin" onClick={() => void handleSignIn()} disabled={busy}>
+            <img src={googleLogo} alt="" width={18} height={18} className="account-signin-logo" aria-hidden="true" />
+            {signInButtonLabel(busy)}
+          </button>
+          {error && <span className="account-error" role="alert">{error}</span>}
+        </div>
+      </PopoverDropdown>
     );
   }
 
+  if (state.status !== 'signed_in') return null; // unreachable given accountAreaMode's own logic - narrows `state` for TypeScript below
   const { identity } = state;
   const label = (
     <span className="account-chip">
