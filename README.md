@@ -74,6 +74,7 @@ KubeVerse tries to make those concepts visible and experimentable: generate a sm
 | **Failure experiments** | Deletes a real Pod on request and observes Kubernetes' own self-healing (a real replacement Pod converging), visualized as it happens. |
 | **Live state, not animation** | The Playground reflects what the Kubernetes API actually reports — it never invents Pods, scaling events, or recovery outcomes. |
 | **Optional Google sign-in** | Desktop-only, identity only (via Firebase Authentication) — never required, never gates any local functionality. |
+| **Automatic update checks** | Checks GitHub Releases in the background and shows a non-blocking banner when a new version is available — see [Automatic Updates](#automatic-updates). Never installs or restarts without your explicit action. |
 
 The AI Builder step requires your own API key from a supported AI provider (OpenRouter today) — KubeVerse does not provide free or bundled AI inference. Every other feature above works without one.
 
@@ -223,7 +224,7 @@ KubeVerse is built to run entirely on your machine:
 - Optional Google sign-in (see [Google Sign-In](#google-sign-in) above) identifies who's using the app via Firebase Authentication and nothing more — it does not gate, upload, or sync any project, generated code, or Docker/Kubernetes state. Firebase is used for authentication only in KubeVerse; no other Firebase service is involved. See [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTER_SPEC.md) §7 for the exact data boundary.
 - The packaged desktop app bundles the frontend and backend runtime KubeVerse needs to run — you don't need to separately install Node.js or any other runtime to use it.
 
-To be precise, rather than overstate this: KubeVerse itself has no cloud backend and no project database, but network requests you explicitly trigger — an AI Builder compile, or signing in with Google — do necessarily send data to that specific external provider (your AI provider, or Google/Firebase for sign-in). Nothing else leaves your machine.
+To be precise, rather than overstate this: KubeVerse itself has no cloud backend and no project database, but network requests you explicitly trigger — an AI Builder compile, or signing in with Google — do necessarily send data to that specific external provider (your AI provider, or Google/Firebase for sign-in). One request is not user-triggered: the packaged app automatically checks GitHub Releases for a newer version shortly after launch (see [Automatic Updates](#automatic-updates)) — a plain version check, nothing else. Nothing else leaves your machine.
 
 ### Where your data lives
 
@@ -304,6 +305,7 @@ Status below is drawn directly from [`KUBEVERSE_MASTER_SPEC.md`](KUBEVERSE_MASTE
 | 4 — Hardening & Public-Release Readiness | Security and correctness fixes found by running the app end-to-end (CORS, path traversal, probe protocol bugs, and more) |
 | 5 — Identity, Authentication & Local-First Privacy | Optional "Continue with Google" sign-in, identity only |
 | 6 — Firebase Authentication | Google sign-in brokered through Firebase Authentication as the identity provider |
+| 7 — Desktop Distribution, Auto-Updates & Windows Polish | Finished the update lifecycle (see [Automatic Updates](#automatic-updates) below), Windows application icon fix, longer backend startup allowance, a more compact sign-in trigger in the top bar |
 
 **Planned / future work** (not yet implemented):
 
@@ -325,7 +327,18 @@ Official packaged builds are distributed only through [GitHub Releases](https://
 - **Linux**: AppImage (portable) and a Debian/Ubuntu `.deb` package.
 - **Windows**: an NSIS `.exe` installer.
 
-Each release is tagged `vX.Y.Z` and lists the exact artifacts attached (see [`RELEASING.md`](RELEASING.md) for how a maintainer cuts one). To get a new version, check the Releases page and install it the same way as your original installation.
+Each release is tagged `vX.Y.Z` and lists the exact artifacts attached (see [`RELEASING.md`](RELEASING.md) for how a maintainer cuts one).
+
+## Automatic Updates
+
+KubeVerse checks GitHub Releases for a newer version shortly after launch, and again any time you click **Check for Updates** in Settings. This check is a plain request to GitHub's public Releases API — no analytics, tracking, or third-party service is involved, and it never happens in a build you've built yourself for development.
+
+- If nothing new is available, nothing happens — no notification, no interruption.
+- If a newer version is available, a small banner appears with a **Download Update** button. Nothing downloads until you click it.
+- Once downloaded, the banner offers **Restart and Update** — KubeVerse never restarts or installs anything on its own.
+- If the check or download fails for any reason (offline, GitHub unreachable), KubeVerse keeps working normally — an update problem never affects your projects, Docker, or Kubernetes access.
+
+**Platform differences, stated precisely:** on Windows and the Linux AppImage, restarting to install is fully silent. On the Linux `.deb` install, installing an update requires your system password (a `pkexec`/`sudo` prompt) — this is normal Linux package-manager behavior, not a KubeVerse limitation, and there's nothing you need to configure for it.
 
 ## Security
 
