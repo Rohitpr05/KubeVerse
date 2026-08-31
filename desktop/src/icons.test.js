@@ -45,13 +45,64 @@ test('the icon.png is a real, substantial image - not an empty/placeholder file'
 test('main.js never passes icon: undefined for a packaged build', () => {
   const source = readFileSync(join(root, 'desktop', 'src', 'main.js'), 'utf8');
   assert.doesNotMatch(source, /icon:\s*app\.isPackaged\s*\?\s*undefined/, 'packaged builds must get a real icon path, not undefined');
-  assert.match(source, /icon:\s*app\.isPackaged\s*\?\s*join\(process\.resourcesPath,\s*['"]icon\.png['"]\)/, 'expected a real bundled-resource icon path for packaged builds');
+});
+
+// Phase 7: Windows' report of a generic (Notes/document-style) installed-app
+// icon led to inspecting BrowserWindow's own icon option specifically for
+// Windows - electron-builder's win/nsis config (already asserted above) only
+// covers the installer/.exe/shortcut metadata baked in at build time via
+// rcedit, not the *running window's own* icon, which is this same
+// X11/Wayland-motivated `icon:` option from a different angle: on Windows it
+// should be a real multi-resolution .ico (Electron's own guidance), not the
+// PNG that's correct for Linux. Both branches are asserted so this can't
+// silently regress to PNG-on-Windows or ico-on-Linux.
+test('main.js picks a real, bundled-resource icon path for both packaged and dev builds, .ico on Windows and .png elsewhere', () => {
+  const source = readFileSync(join(root, 'desktop', 'src', 'main.js'), 'utf8');
+  assert.match(
+    source,
+    /icon:\s*app\.isPackaged\s*\n?\s*\?\s*join\(process\.resourcesPath,\s*process\.platform\s*===\s*['"]win32['"]\s*\?\s*['"]icon\.ico['"]\s*:\s*['"]icon\.png['"]\)/,
+    'expected a real, platform-appropriate bundled-resource icon path for packaged builds (.ico on win32, .png elsewhere)',
+  );
+  assert.match(
+    source,
+    /:\s*join\(__dirname,\s*['"]\.\.['"],\s*['"]build['"],\s*process\.platform\s*===\s*['"]win32['"]\s*\?\s*['"]icon\.ico['"]\s*:\s*['"]icon\.png['"]\)/,
+    'expected the same platform-appropriate icon file in dev mode',
+  );
 });
 
 test('the packaged icon.png is actually bundled into the app via extraResources, not just referenced', () => {
   const entry = desktopPkg.build.extraResources.find((resource) => resource.to === 'icon.png');
   assert.ok(entry, 'expected an extraResources entry copying an icon into the packaged app (to: "icon.png")');
   assert.equal(entry.from, 'build/icon.png');
+});
+
+test('the packaged icon.ico is actually bundled into the app via extraResources too, not just referenced by win/nsis config', () => {
+  const entry = desktopPkg.build.extraResources.find((resource) => resource.to === 'icon.ico');
+  assert.ok(entry, 'expected an extraResources entry copying icon.ico into the packaged app (to: "icon.ico") - otherwise main.js\'s own Windows icon: option would point at a file that does not exist at runtime');
+  assert.equal(entry.from, 'build/icon.ico');
+});
+
+test('the icon.ico is a real, valid multi-resolution Windows icon - not an empty/placeholder/renamed file', () => {
+  const bytes = readFileSync(join(buildDir, 'icon.ico'));
+  // ICO header: reserved(0)=0, type(2)=1 (icon), count(2)>=1 real entries.
+  assert.equal(bytes.readUInt16LE(0), 0, 'ICO reserved field must be 0');
+  assert.equal(bytes.readUInt16LE(2), 1, 'ICO type field must be 1 (icon, not cursor)');
+  const count = bytes.readUInt16LE(4);
+  assert.ok(count >= 1, 'expected at least one icon image entry');
+  // Windows' own Start Menu/taskbar/high-DPI icon caches specifically need a
+  // large (256x256, stored as 0x0 in the directory entry per the ICO spec's
+  // byte-sized width/height fields) entry to look correct at every size -
+  // a tiny icon.ico with only a 16x16 entry is exactly the kind of
+  // "technically an .ico but effectively a generic-looking icon" file that
+  // would reproduce this bug.
+  let has256 = false;
+  for (let i = 0; i < count; i += 1) {
+    const entryOffset = 6 + i * 16;
+    const width = bytes.readUInt8(entryOffset);
+    const height = bytes.readUInt8(entryOffset + 1);
+    if (width === 0 && height === 0) has256 = true; // 0 encodes 256 in the ICO format
+  }
+  assert.ok(has256, 'expected a 256x256 entry in icon.ico for crisp Start Menu/high-DPI rendering');
 });
 
 // Investigated per the Phase 5 follow-up's request ("determine whether the
