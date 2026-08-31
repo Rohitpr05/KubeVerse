@@ -449,10 +449,38 @@ dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-s
 .onboarding-blocker { margin-top: 12px; }
 
 /* --- Phase 3B: desktop auto-update banner (UpdateBanner.tsx) ---
-   Persistent, non-modal strip above the TopBar - never a full-page
+   Non-modal notification docked just below the TopBar - never a full-page
    takeover, matching "do not force updates / do not interrupt an active
-   simulation" (Phase 3B, §12). */
-.update-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 18px; background: #12305c; border-bottom: 1px solid #1d4ed8; flex-wrap: wrap; }
+   simulation" (Phase 3B, §12).
+
+   Real bug fixed here (v4.3.2): .update-banner used to be a plain in-flow
+   sibling of TopBar/.shell-body inside .app-shell - but .app-shell is a CSS
+   Grid with a hardcoded 2-row template (`grid-template-rows: 56px
+   minmax(0, 1fr)`, one row for the topbar, one for the shell body) and no
+   explicit grid-row assignments anywhere. The instant UpdateBanner rendered
+   a third child, Grid's auto-placement algorithm shifted every subsequent
+   item down one row: the banner itself landed in the 56px row meant for
+   TopBar (overlapping/clipping it - problem 1), TopBar got shoved into the
+   minmax(0, 1fr) row meant for .shell-body (stretching/resizing the
+   header), and .shell-body itself fell into a new *implicit* row sized by
+   `grid-auto-rows` - never getting the "fill the rest of the viewport"
+   sizing it depends on, which is what made the sidebar/workspace
+   structurally collapse while navigating (problem 2). Escalating z-index
+   would not have fixed this - the corruption was in row *assignment*, not
+   paint order.
+   Fixed the same way lab/LabDrawer.tsx's own overlay already solves this
+   exact category of problem (see .lab-drawer's own comment further down):
+   taken out of grid flow entirely via `position: fixed`, so it can never
+   participate in .app-shell's row template again regardless of how many
+   times it mounts/unmounts. `top: 56px` is the same hardcoded topbar-height
+   constant .lab-drawer already uses; `z-index: 999` matches .lab-drawer's
+   own tier (just under .modal-backdrop's 1000) rather than picking a new,
+   competing value. The banner now overlays the very top edge of the
+   sidebar/workspace while visible - the same accepted trade-off
+   .lab-drawer's own comment already documents ("overlays the Workspace
+   sidebar AND the topology without depending on either one's layout") -
+   never resizing or restructuring them. */
+.update-banner { position: fixed; top: 56px; left: 0; right: 0; z-index: 999; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 18px; background: #12305c; border-bottom: 1px solid #1d4ed8; flex-wrap: wrap; box-shadow: 0 8px 20px #020617aa; }
 .update-banner-text { display: flex; flex-direction: column; gap: 1px; font-size: .78rem; }
 .update-banner-text strong { color: #e8f0ff; font-size: .82rem; }
 .update-banner-actions { display: flex; align-items: center; gap: 10px; }
