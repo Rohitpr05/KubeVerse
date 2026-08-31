@@ -28,6 +28,18 @@ function createUpdateController({ app, ipcMain, getMainWindow }) {
   autoUpdater.autoInstallOnAppQuit = false;
 
   let latestState = { status: 'idle' };
+  // Local, synchronous in-flight flags - deliberately not derived from
+  // `latestState`. electron-updater's own 'checking-for-update'/
+  // 'download-progress' events fire asynchronously once the real HTTP work
+  // actually starts, which leaves a real (if brief) window right after
+  // checkForUpdates()/downloadUpdate() is first called where latestState
+  // still reflects the *previous* state - a second call landing in exactly
+  // that window would slip past a latestState-based guard and reach
+  // electron-updater twice. These flags are set the instant this module
+  // decides to act, before any await, so a second call in that same window
+  // is a guaranteed no-op instead of a race.
+  let isChecking = false;
+  let isDownloading = false;
 
   function broadcast(state) {
     latestState = state;
@@ -66,24 +78,43 @@ function createUpdateController({ app, ipcMain, getMainWindow }) {
     // Unpackaged (dev) runs have no update metadata and would just throw
     // "dev-app-update.yml" errors - never attempted (§14/§15).
     if (!app.isPackaged) { broadcast({ status: 'not-available' }); return; }
+    // Whether this is the automatic once-per-launch check or a manual
+    // "Check for Updates" click, a check already in flight is left to finish
+    // on its own - never a second concurrent request to GitHub, and never a
+    // second 'checking' broadcast that could stomp on the first check's own
+    // eventual result.
+    if (isChecking) return;
+    isChecking = true;
     try {
       await autoUpdater.checkForUpdates();
     } catch (error) {
       console.error('KubeVerse update check failed:', describeErrorForLog(error));
       broadcast({ status: 'error', message: sanitizeUpdateError(error) });
+    } finally {
+      isChecking = false;
     }
   }
 
-  ipcMain.handle('kubeverse:check-for-updates', () => checkForUpdates());
-  ipcMain.handle('kubeverse:get-update-state', () => latestState);
-  ipcMain.handle('kubeverse:download-update', async () => {
+  async function downloadUpdate() {
+    // Mirrors checkForUpdates()'s own guard above - UpdateBanner.tsx already
+    // disables its own "Download Update" button while a download is in
+    // flight, but that is a renderer-side courtesy, not a real guarantee
+    // (e.g. two windows, or a renderer bug); this is the actual guarantee.
+    if (isDownloading) return;
+    isDownloading = true;
     try {
       await autoUpdater.downloadUpdate();
     } catch (error) {
       console.error('KubeVerse update download failed:', describeErrorForLog(error));
       broadcast({ status: 'error', message: sanitizeUpdateError(error) });
+    } finally {
+      isDownloading = false;
     }
-  });
+  }
+
+  ipcMain.handle('kubeverse:check-for-updates', () => checkForUpdates());
+  ipcMain.handle('kubeverse:get-update-state', () => latestState);
+  ipcMain.handle('kubeverse:download-update', () => downloadUpdate());
   // The only IPC call that actually restarts the app - exclusively reachable
   // from the renderer's own explicit "Restart and Update" button click,
   // never triggered by this module on its own.
