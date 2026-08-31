@@ -16,7 +16,7 @@
     "dev": "electron .",
     "test": "node --test 'src/**/*.test.js'",
     "prepare-backend-deps": "node scripts/prepare-backend-deps.js",
-    "package": "npm run prepare-backend-deps && electron-builder",
+    "package": "npm run prepare-backend-deps && electron-builder --publish never",
     "release": "npm run prepare-backend-deps && electron-builder --publish always"
   },
   "devDependencies": {
