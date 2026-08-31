@@ -17,7 +17,7 @@ export function ExplorerControls({ search, setSearch, visibleKinds, toggleKind, 
     {/* The Lab Controls trigger lives here so it's always reachable whether
         the drawer (lab/LabDrawer.tsx) is open or closed - it never disappears,
         it just reflects current state via aria-pressed/the active class. */}
-    <button className="lab-drawer-trigger" onClick={onToggleLabDrawer} aria-pressed={labDrawerOpen}>🧪 Lab Controls</button>
+    <button className="lab-drawer-trigger" onClick={onToggleLabDrawer} aria-pressed={labDrawerOpen}>Lab Controls</button>
     <label>Search<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="name, kind, namespace" /></label>
     <PopoverDropdown label="Filters">
       <div className="kind-filters">{clusterKinds.map((kind) => <label key={kind}><input type="checkbox" checked={visibleKinds.has(kind)} onChange={() => toggleKind(kind)} />{kind}</label>)}</div>
