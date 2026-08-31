@@ -60,3 +60,22 @@ export function initials(identity: GoogleIdentity): string {
 export function signInButtonLabel(busy: boolean): string {
   return busy ? 'Opening Google sign-in…' : 'Continue with Google';
 }
+
+// Phase 7: what the top-bar account area renders for a given auth state -
+// factored out of AccountMenu.tsx for the same reason every other function
+// in this file is: a pure decision, testable without a DOM/component-render
+// harness (this project has never needed one - see updateLogic.ts for the
+// same pattern applied to the update banner). 'hidden' covers 'loading'
+// only (never flash a wrong initial state, matching OnboardingView.tsx's own
+// three-state setupComplete gating); 'signed-out' covers both 'signed_out'
+// and 'error' - a failed/cancelled sign-in attempt still shows the same
+// compact "Sign in" trigger (AccountMenu.tsx layers the actual error message
+// into that trigger's own popover via its local component state), never a
+// distinct fourth top-bar treatment.
+export type AccountAreaMode = 'hidden' | 'signed-out' | 'signed-in';
+
+export function accountAreaMode(state: AuthState): AccountAreaMode {
+  if (state.status === 'loading') return 'hidden';
+  if (state.status === 'signed_in') return 'signed-in';
+  return 'signed-out';
+}
