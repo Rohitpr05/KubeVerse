@@ -1,7 +1,7 @@
 {
   "name": "@kubeverse/frontend",
   "private": true,
-  "version": "4.3.0",
+  "version": "4.3.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "test": "tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
-    "@kubeverse/shared": "4.3.0",
+    "@kubeverse/shared": "4.3.1",
     "@xyflow/react": "^12.8.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
