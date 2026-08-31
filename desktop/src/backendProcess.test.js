@@ -1,6 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createServer } = require('node:net');
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
 const { getFreePort, waitForHealth, startBackendProcess, stopBackendProcess, backendEnv } = require('./backendProcess.js');
 
 function listenOn(port) {
@@ -162,4 +164,42 @@ test('stopBackendProcess falls back to SIGKILL if the process ignores SIGTERM, r
   const elapsed = Date.now() - start;
   assert.ok(elapsed >= 500 && elapsed < 3000, `expected the SIGKILL backstop around 500ms, took ${elapsed}ms`);
   assert.notEqual(child.exitCode ?? child.signalCode, null);
+});
+
+// Phase 7: the packaged app's real-world startup wait (spawning the bundled
+// backend, waiting for a slower first-run of a real machine - antivirus
+// scanning a freshly-extracted binary, a cold filesystem cache, etc.) was
+// widened from 20s to 30s. main.js requires 'electron' at module scope so it
+// can only run inside a real Electron process (see updater.js/icons.test.js
+// for the same constraint) - asserted against the source text directly,
+// same established pattern, rather than by importing main.js.
+test('the packaged-mode backend health check waits up to 30 seconds, not the old, tighter 20 seconds', () => {
+  const source = readFileSync(join(__dirname, 'main.js'), 'utf8');
+  assert.match(
+    source,
+    /waitForHealth\(\{\s*url:\s*`http:\/\/127\.0\.0\.1:\$\{port\}\/health`,\s*timeoutMs:\s*30_000\s*\}\)/,
+    'expected the packaged-mode backend health check to allow up to 30 seconds',
+  );
+  assert.doesNotMatch(
+    source,
+    /waitForHealth\(\{\s*url:\s*`http:\/\/127\.0\.0\.1:\$\{port\}\/health`,\s*timeoutMs:\s*20_000\s*\}\)/,
+    'the old, tighter 20-second timeout should be gone',
+  );
+});
+
+// waitForHealth itself is unchanged by the timeout bump above - still real
+// poll-until-ready-or-deadline logic, never a fixed sleep - confirmed
+// directly rather than assumed, since that's the actual behavioral
+// requirement this whole change has to preserve.
+test('waitForHealth returns as soon as the backend is healthy, well before any timeout - proving this is real polling, not a fixed sleep', async () => {
+  let callCount = 0;
+  const fetchFn = async () => {
+    callCount += 1;
+    return { ok: callCount >= 3 }; // healthy on the 3rd poll
+  };
+  const start = Date.now();
+  await waitForHealth({ url: 'http://127.0.0.1:0/health', timeoutMs: 30_000, intervalMs: 20, fetchFn });
+  const elapsed = Date.now() - start;
+  assert.ok(callCount >= 3, 'expected waitForHealth to actually poll multiple times, not just check once');
+  assert.ok(elapsed < 5000, `expected waitForHealth to return promptly once healthy, not wait for the full 30s timeout (took ${elapsed}ms)`);
 });
