@@ -91,6 +91,12 @@ const authController = createAuthController({
 const DEV_MODE = !app.isPackaged;
 const DEV_BACKEND_URL = 'http://127.0.0.1:4000';
 const DEV_FRONTEND_URL = 'http://127.0.0.1:5173';
+// How long to wait, after the window has genuinely finished loading (real
+// readiness - see the loadURL() comment below), before the automatic
+// background update check fires. Not "when we guess the app is ready" -
+// purely a courtesy gap so this non-critical, silent-on-failure check never
+// competes for network priority with the app's own real startup requests.
+const UPDATE_CHECK_DELAY_AFTER_READY_MS = 4000;
 
 let backendChild;
 let mainWindow;
@@ -138,7 +144,17 @@ async function main() {
     // isn't copied into the packaged app (build-time-only input to
     // electron-builder), so packaged mode reads the copy explicitly bundled
     // via extraResources (desktop/package.json) instead.
-    icon: app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '..', 'build', 'icon.png'),
+    // Windows wants a real multi-resolution .ico for BrowserWindow's own
+    // icon (title bar/Alt-Tab/taskbar) - a bare PNG has shown inconsistent
+    // results there in the past (Electron's own icon guidance recommends
+    // .ico on Windows, .png on Linux); .ico is a Windows-only container
+    // format elsewhere, so this stays PNG on Linux/macOS, matching the
+    // X11/Wayland reasoning above. Both files are genuinely shipped in the
+    // packaged app - build/icon.ico is also in extraResources now,
+    // mirroring build/icon.png (desktop/package.json).
+    icon: app.isPackaged
+      ? join(process.resourcesPath, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+      : join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     show: false,
     webPreferences: {
       // No Node/filesystem/shell access in the renderer (Phase 3, §9) - the
@@ -158,17 +174,33 @@ async function main() {
 
   try {
     const targetUrl = DEV_MODE ? await waitForDevServers() : await startProductionBackend();
+    // `loadURL()`'s own promise is a real readiness signal, not a guess: per
+    // Electron's docs it resolves once the page has actually finished
+    // loading (did-finish-load) - the React app's HTML/JS/CSS is genuinely
+    // in the window by the time this `await` returns, not "probably loaded
+    // by now" the way a fixed delay from process start would be. This
+    // replaces the previous implementation's plain `setTimeout(..., 5000)`
+    // measured from nothing in particular, which is why it was disabled
+    // rather than just re-enabled as-is.
     await mainWindow.loadURL(targetUrl);
-    // The automatic once-per-launch update check is deliberately disabled
-    // for this release: the full auto-update system (automatic checks,
-    // update UX polish, a supported release cadence to check against) is a
-    // later phase, not this one - a packaged build must not make an
-    // unattended GitHub request just because it launched. The update
-    // machinery itself (updater.js, IPC handlers, Settings' manual "Check
-    // for Updates" button) is untouched and still fully functional - only
-    // this automatic trigger is removed. Re-enable by restoring a
-    // `setTimeout(() => void updateController.checkForUpdates(), 5000).unref();`
-    // call here once auto-update is a supported, documented feature.
+    // Only ever scheduled for a real packaged build - checkForUpdates()
+    // itself already no-ops in dev mode (updater.js), but skipping the
+    // schedule entirely here makes "never runs in development" true by
+    // construction, not by relying on a nested guard elsewhere. Fire-and-
+    // forget (`void` + `.unref()`) so this can never block or delay the
+    // window the user is already looking at, and a failure (offline, no
+    // release published yet, GitHub unreachable) is handled entirely inside
+    // the controller - see updater.js's own 'error' handling - never thrown
+    // here, never shown as anything more than Settings' own quiet status
+    // line (UpdateBanner.tsx's shouldShowBanner() deliberately stays silent
+    // for an 'error' state). The short remaining delay (measured from the
+    // app actually being ready, not launch) exists only so this genuinely
+    // non-critical background check doesn't compete for network priority
+    // with the app's own real startup requests (the SSE snapshot stream,
+    // /api/identity, /health) that fire in this same first moment.
+    if (app.isPackaged) {
+      setTimeout(() => void updateController.checkForUpdates(), UPDATE_CHECK_DELAY_AFTER_READY_MS).unref();
+    }
   } catch (error) {
     console.error('KubeVerse backend failed to start:', error);
     await showStartupError(String(error?.message ?? error));
@@ -236,7 +268,7 @@ async function startProductionBackend() {
     }
   });
 
-  await waitForHealth({ url: `http://127.0.0.1:${port}/health`, timeoutMs: 20_000 });
+  await waitForHealth({ url: `http://127.0.0.1:${port}/health`, timeoutMs: 30_000 });
   return `http://127.0.0.1:${port}/`;
 }
 
