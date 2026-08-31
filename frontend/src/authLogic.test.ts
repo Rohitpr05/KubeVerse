@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { displayName, initials, signInButtonLabel, type AuthState, type GoogleIdentity } from './authLogic.js';
+import { accountAreaMode, displayName, initials, signInButtonLabel, type AuthState, type GoogleIdentity } from './authLogic.js';
 
 // Exercises the real discriminated union at runtime, not just compile-time -
 // proves the four explicit states (loading/signed_out/signed_in/error) are
@@ -49,4 +49,24 @@ test('initials derives from name first, then email, capped at two letters', () =
 test('signInButtonLabel reflects the real busy state, no fake progress text', () => {
   assert.equal(signInButtonLabel(false), 'Continue with Google');
   assert.equal(signInButtonLabel(true), 'Opening Google sign-in…');
+});
+
+// Phase 7: the top bar no longer shows a persistent "Continue with Google"
+// button - AccountMenu.tsx now asks this function what to render for a given
+// state, so its full decision table is exercised here directly rather than
+// only indirectly through untested JSX branches.
+test('accountAreaMode hides the account area entirely while auth state is still loading - never flashes signed-out first', () => {
+  assert.equal(accountAreaMode({ status: 'loading' }), 'hidden');
+});
+
+test('accountAreaMode shows the compact signed-out trigger for a genuinely signed-out user', () => {
+  assert.equal(accountAreaMode({ status: 'signed_out' }), 'signed-out');
+});
+
+test('accountAreaMode shows the same compact signed-out trigger after a sign-in error - never a distinct, separate error treatment in the top bar', () => {
+  assert.equal(accountAreaMode({ status: 'error', message: "Couldn't sign in. Try again." }), 'signed-out');
+});
+
+test('accountAreaMode shows the signed-in account chip once a real identity is present', () => {
+  assert.equal(accountAreaMode({ status: 'signed_in', identity: { uid: 'u1', name: 'Ada Lovelace' } }), 'signed-in');
 });
