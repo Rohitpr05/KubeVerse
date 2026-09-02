@@ -126,7 +126,16 @@ export function SettingsView() {
         </div>
         <div className="environment-row">
           <span className={environment?.docker.available ? 'status-badge ok' : 'status-badge error'}>Docker: {environment ? (environment.docker.available ? 'Available' : 'Unavailable') : 'Checking…'}</span>
-          <span className="muted">{environment && (environment.docker.available ? environment.docker.version ?? 'unknown version' : environment.docker.error ?? 'not detected — install or start Docker Desktop to build/run generated projects')}</span>
+          {/* Never the raw execFile error (checkDockerAvailable's own catch
+              branch - backend/src/execution/dockerRunner.ts) - that includes
+              the full attempted CLI command and, on a real machine, the
+              Docker socket's own filesystem path, neither of which a normal
+              user needs to see. The real availability check itself (and its
+              real error, still returned in the API response for anyone who
+              needs it) is unchanged - only this display text is fixed,
+              matching the Kubernetes row's own established clean-message
+              convention just below. */}
+          <span className="muted">{environment && (environment.docker.available ? environment.docker.version ?? 'unknown version' : 'your Docker is currently unreachable — start or enable Docker and recheck')}</span>
         </div>
         <div className="environment-row">
           <span className={kubernetesReady ? 'status-badge ok' : kubernetesReady === false ? 'status-badge error' : 'status-badge'}>Kubernetes: {kubernetesReady === undefined ? 'Checking…' : kubernetesReady ? 'Connected' : 'Unavailable'}</span>
@@ -134,7 +143,10 @@ export function SettingsView() {
         </div>
         <div className="environment-row">
           <span className={environment?.kubernetes.available ? 'status-badge ok' : 'status-badge error'}>kubectl: {environment ? (environment.kubernetes.available ? 'Available' : 'Missing') : 'Checking…'}</span>
-          <span className="muted">{environment && (environment.kubernetes.available ? `context: ${environment.kubernetes.context ?? 'unknown'}${environment.kubernetes.server ? ` · ${environment.kubernetes.server}` : ''}` : environment.kubernetes.error ?? 'kubectl was not found on PATH')}</span>
+          {/* Same fix as Docker above - checkKubectlAvailable's own raw
+              execFile error (backend/src/execution/kubernetesRunner.ts)
+              used to be shown here verbatim. */}
+          <span className="muted">{environment && (environment.kubernetes.available ? `context: ${environment.kubernetes.context ?? 'unknown'}${environment.kubernetes.server ? ` · ${environment.kubernetes.server}` : ''}` : 'kubectl is currently unavailable — install kubectl or configure a cluster context and recheck')}</span>
         </div>
         <div className="settings-actions">
           <button onClick={checkEnvironment}>Recheck</button>
