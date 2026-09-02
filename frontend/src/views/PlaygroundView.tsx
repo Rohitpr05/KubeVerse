@@ -369,16 +369,18 @@ export function PlaygroundView({ currentProject, navigate }: { currentProject: P
     const next = new Set(current); if (next.has(kind)) next.delete(kind); else next.add(kind); return next;
   });
 
+  // No project open yet: stay visually empty/idle, matching the rest of the
+  // app's plain background - never a forced "go pick a project" prompt.
+  // Deliberately not the .empty-hero card every other view's own no-project
+  // state uses (Playground specifically, per product decision - the other
+  // views are unchanged) - and deliberately not the main return below
+  // either, which assumes a real project/resourceGraph and would otherwise
+  // have to guess at SSE/topology state with nothing to show.
   if (!currentProject && !loadedProjectIdRef.current) {
     return (
       <div className="playground-view">
         <div className="view">
           <h1>Playground</h1>
-          <section className="empty-hero">
-            <h2>Open a project first</h2>
-            <p className="muted">The Playground shows one KubeVerse project's real Kubernetes resources - open or create a project to see it here.</p>
-            <div className="settings-actions"><button onClick={() => navigate('projects')}>Go to Projects</button></div>
-          </section>
         </div>
       </div>
     );
