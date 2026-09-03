@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type EnvironmentStatus, type Identity, type PublicSettings } from '../api';
-import { checkForUpdates, downloadUpdate, getUpdateState, isDesktopApp, onUpdateState, quitAndInstall } from '../desktop';
+import { checkForUpdates, downloadUpdate, getAppVersion, getUpdateState, isDesktopApp, onUpdateState, quitAndInstall } from '../desktop';
 import { primaryAction, settingsStatusText, type UpdateState } from '../updateLogic';
 
 export function SettingsView() {
@@ -16,6 +16,7 @@ export function SettingsView() {
   const [testing, setTesting] = useState(false);
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' });
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [appVersion, setAppVersion] = useState<string>();
 
   // Reused by the initial load and the Recheck button - the same real
   // probes the desktop first-launch checklist uses (OnboardingView.tsx),
@@ -50,6 +51,7 @@ export function SettingsView() {
   // "up to date" or a real error - the user explicitly asked.
   useEffect(() => {
     if (!isDesktopApp()) return;
+    void getAppVersion().then(setAppVersion);
     void getUpdateState().then(setUpdateState);
     return onUpdateState(setUpdateState);
   }, []);
@@ -109,7 +111,7 @@ export function SettingsView() {
         <label>Model<input value={model} onChange={(event) => setModel(event.target.value)} placeholder={settings?.defaultModel ?? 'Loading default…'} /></label>
         <p className="muted">Default model is used unless you choose another OpenRouter model. Clearing this field and saving restores the default ({settings?.defaultModel ?? '…'}).</p>
         <label>API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={settings?.hasApiKey ? '••••••••••••••••••••' : 'sk-or-...'} /></label>
-        <p className="muted">Your API key is stored locally on this machine, at <code>~/.kubeverse/settings.json</code>. It is never committed to a project, never sent to KubeVerse, and only ever sent to the AI provider you configure here. A production desktop build will move this to OS keychain storage.</p>
+        <p className="muted">Your API key is stored locally on this machine, at <code>~/.kubeverse/settings.json</code>. It is never committed to a project, never sent to KubeVerse, and only ever sent to the AI provider you configure here.</p>
         <div className="settings-actions">
           <button onClick={() => void save()}>Save</button>
           <button onClick={() => void testConnection()} disabled={testing}>{testing ? 'Testing…' : 'Test Connection'}</button>
@@ -156,7 +158,7 @@ export function SettingsView() {
       {isDesktopApp() && (
         <section className="settings-card">
           <h2>Updates</h2>
-          <p className="muted">{settingsStatusText(updateState)}</p>
+          <p className="muted">{settingsStatusText(updateState, appVersion)}</p>
           <div className="settings-actions">
             <button onClick={() => void checkForUpdates()} disabled={updateState.status === 'checking'}>
               {updateState.status === 'checking' ? 'Checking…' : 'Check for Updates'}

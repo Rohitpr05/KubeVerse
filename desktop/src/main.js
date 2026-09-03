@@ -50,6 +50,16 @@ function setupStatePath() {
 ipcMain.handle('kubeverse:get-setup-complete', () => readSetupComplete(setupStatePath()));
 ipcMain.handle('kubeverse:set-setup-complete', () => { writeSetupComplete(setupStatePath(), true); return true; });
 
+// The one existing authoritative version source, exposed read-only: Electron's
+// own app.getVersion() reads directly from the packaged app's own
+// package.json "version" field (desktop/package.json - kept in lockstep with
+// every other workspace by scripts/set-version.js, see version.test.js) - in
+// dev mode this is whatever desktop/package.json currently says. Not a new
+// version file, not hardcoded, not derived from the update-check machinery
+// (which only ever knows about the *latest available* release, not the
+// currently-installed one).
+ipcMain.handle('kubeverse:get-app-version', () => app.getVersion());
+
 // getMainWindow is a closure over the `mainWindow` variable declared below
 // (assigned once main() actually runs) - registering the updater's IPC
 // handlers here, at module scope, means Settings' "Check for Updates" works

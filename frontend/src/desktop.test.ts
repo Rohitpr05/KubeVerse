@@ -73,6 +73,20 @@ test('markSetupComplete does not throw when there is no desktop bridge (browser 
   });
 });
 
+test('getAppVersion is undefined (never a fabricated version) when there is no desktop bridge', async () => {
+  const { getAppVersion } = await import('./desktop.js');
+  await withWindow(undefined, async () => {
+    assert.equal(await getAppVersion(), undefined);
+  });
+});
+
+test('getAppVersion delegates to the real bridge call and returns its real (Electron app.getVersion()) value when present', async () => {
+  const { getAppVersion } = await import('./desktop.js');
+  await withWindow({ isDesktop: true, getSetupComplete: async () => true, setSetupComplete: async () => true, getAppVersion: async () => '4.3.3' }, async () => {
+    assert.equal(await getAppVersion(), '4.3.3');
+  });
+});
+
 // --- update bridge (Phase 3B) ---
 
 function fakeBridge(overrides: Partial<Record<string, unknown>> = {}) {
@@ -80,6 +94,7 @@ function fakeBridge(overrides: Partial<Record<string, unknown>> = {}) {
     isDesktop: true,
     getSetupComplete: async () => true,
     setSetupComplete: async () => true,
+    getAppVersion: async () => '4.3.3',
     checkForUpdates: async () => {},
     getUpdateState: async () => ({ status: 'idle' }),
     downloadUpdate: async () => {},

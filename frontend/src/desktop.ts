@@ -11,6 +11,7 @@ export interface KubeverseDesktopBridge {
   isDesktop: true;
   getSetupComplete: () => Promise<boolean>;
   setSetupComplete: () => Promise<boolean>;
+  getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<void>;
   getUpdateState: () => Promise<UpdateState>;
   downloadUpdate: () => Promise<void>;
@@ -38,6 +39,13 @@ export function getSetupComplete(): Promise<boolean> {
 
 export function markSetupComplete(): Promise<boolean> {
   return window.kubeverseDesktop?.setSetupComplete() ?? Promise.resolve(true);
+}
+
+// undefined in browser dev mode (no packaged app, nothing to report) -
+// callers should fall back to a generic message rather than showing a
+// fabricated version number.
+export function getAppVersion(): Promise<string | undefined> {
+  return window.kubeverseDesktop?.getAppVersion() ?? Promise.resolve(undefined);
 }
 
 export function checkForUpdates(): Promise<void> {

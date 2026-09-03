@@ -12,6 +12,10 @@
 //     (desktop/src/setupState.js), written only by the main process via
 //     these two narrow IPC handlers (see main.js), never a direct
 //     filesystem API handed to the renderer.
+//   - getAppVersion: read-only access to Electron's own app.getVersion()
+//     (desktop/package.json's version) - lets Settings show "KubeVerse
+//     X.Y.Z is up to date" with the real installed version, not a generic
+//     message.
 //   - checkForUpdates/downloadUpdate/quitAndInstall/getUpdateState/
 //     onUpdateState: the *only* surface for the Phase 3B auto-updater
 //     (desktop/src/updater.js) - a real download or restart-to-install only
@@ -29,6 +33,7 @@ contextBridge.exposeInMainWorld('kubeverseDesktop', {
   isDesktop: true,
   getSetupComplete: () => ipcRenderer.invoke('kubeverse:get-setup-complete'),
   setSetupComplete: () => ipcRenderer.invoke('kubeverse:set-setup-complete'),
+  getAppVersion: () => ipcRenderer.invoke('kubeverse:get-app-version'),
 
   checkForUpdates: () => ipcRenderer.invoke('kubeverse:check-for-updates'),
   getUpdateState: () => ipcRenderer.invoke('kubeverse:get-update-state'),

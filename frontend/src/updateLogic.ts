@@ -55,11 +55,16 @@ export function primaryAction(state: UpdateState): 'download' | 'restart' | null
 // the silent background banner, a manual check always shows *something*,
 // including the otherwise-hidden states (checking/not-available/error), since
 // the user explicitly asked (§14).
-export function settingsStatusText(state: UpdateState): string {
+// `currentVersion` is the app's own installed version (desktop.ts's
+// getAppVersion(), ultimately Electron's app.getVersion()) - optional, and
+// only ever used for the 'not-available' case, so every other state's
+// wording (checking/available/downloading/downloaded/error) is completely
+// unaffected by whether it's provided.
+export function settingsStatusText(state: UpdateState, currentVersion?: string): string {
   switch (state.status) {
     case 'idle': return 'Not checked yet.';
     case 'checking': return 'Checking…';
-    case 'not-available': return 'KubeVerse is up to date.';
+    case 'not-available': return currentVersion ? `KubeVerse ${currentVersion} is up to date.` : 'KubeVerse is up to date.';
     case 'available': return `KubeVerse ${state.version} is available.`;
     case 'downloading': return `Downloading ${Math.round(state.percent)}%…`;
     case 'downloaded': return `KubeVerse ${state.version} downloaded - restart to install.`;

@@ -77,3 +77,28 @@ test('settingsStatusText renders state.message exactly as given, with no extra w
   const text = settingsStatusText({ status: 'error', message: "Couldn't check for updates right now." });
   assert.equal(text, "Couldn't check for updates right now.");
 });
+
+// --- settingsStatusText's currentVersion param: only ever affects
+// 'not-available' - every other state's wording is untouched either way ---
+
+test('the "up to date" message names the real installed version when one is provided', () => {
+  assert.equal(settingsStatusText({ status: 'not-available' }, '4.3.3'), 'KubeVerse 4.3.3 is up to date.');
+});
+
+test('the "up to date" message falls back to the generic wording when no version is available (e.g. browser dev mode)', () => {
+  assert.equal(settingsStatusText({ status: 'not-available' }), 'KubeVerse is up to date.');
+  assert.equal(settingsStatusText({ status: 'not-available' }, undefined), 'KubeVerse is up to date.');
+});
+
+test('currentVersion never leaks into any other state\'s wording - only \'not-available\' ever uses it', () => {
+  const currentVersion = '4.3.3';
+  assert.doesNotMatch(settingsStatusText({ status: 'idle' }, currentVersion), /4\.3\.3/);
+  assert.doesNotMatch(settingsStatusText({ status: 'checking' }, currentVersion), /4\.3\.3/);
+  // 'available'/'downloaded' already name a real (different) version - the
+  // *latest available* one, never the currently-installed one - so passing
+  // currentVersion must never overwrite or duplicate that.
+  assert.equal(settingsStatusText({ status: 'available', version: '9.9.9' }, currentVersion), 'KubeVerse 9.9.9 is available.');
+  assert.equal(settingsStatusText({ status: 'downloaded', version: '9.9.9' }, currentVersion), 'KubeVerse 9.9.9 downloaded - restart to install.');
+  assert.doesNotMatch(settingsStatusText({ status: 'downloading', percent: 10, bytesPerSecond: 1, transferred: 1, total: 2 }, currentVersion), /4\.3\.3/);
+  assert.doesNotMatch(settingsStatusText({ status: 'error', message: 'offline' }, currentVersion), /4\.3\.3/);
+});
