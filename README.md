@@ -29,10 +29,10 @@ Everything — your projects, generated code, and configuration — stays on you
 
 **[Get KubeVerse from the GitHub Releases page →](https://github.com/Rohitpr05/KubeVerse/releases)**
 
-The current version is **v4.3.2**, packaged as:
+The current version is **v4.3.4**, packaged as:
 
-- **Linux** — [`KubeVerse-4.3.2-linux-x86_64.AppImage`](https://github.com/Rohitpr05/KubeVerse/releases/download/v4.3.2/KubeVerse-4.3.2-linux-x86_64.AppImage) (portable) or [`KubeVerse-4.3.2-linux-amd64.deb`](https://github.com/Rohitpr05/KubeVerse/releases/download/v4.3.2/KubeVerse-4.3.2-linux-amd64.deb) (system install)
-- **Windows** — [`KubeVerse-4.3.2-win-x64.exe`](https://github.com/Rohitpr05/KubeVerse/releases/download/v4.3.2/KubeVerse-4.3.2-win-x64.exe) (installer)
+- **Linux** — [`KubeVerse-4.3.4-linux-amd64.deb`](https://github.com/Rohitpr05/KubeVerse/releases/download/v4.3.4/KubeVerse-4.3.4-linux-amd64.deb) (recommended for Ubuntu/Debian) or [`KubeVerse-4.3.4-linux-x86_64.AppImage`](https://github.com/Rohitpr05/KubeVerse/releases/download/v4.3.4/KubeVerse-4.3.4-linux-x86_64.AppImage) (portable, any distribution)
+- **Windows** — `KubeVerse-4.3.4-win-x64.exe` (installer) — not yet attached to the v4.3.4 release at the time of writing; check the [Releases page](https://github.com/Rohitpr05/KubeVerse/releases) directly.
 
 See [Linux](#linux) / [Windows](#windows) below for exact setup steps once you've downloaded the file for your OS.
 
@@ -100,28 +100,28 @@ Once you've downloaded the right file for your OS from [GitHub Releases](https:/
 
 ### Linux
 
-KubeVerse packages as an **AppImage** (portable, no installation) and a **`.deb`** (installs system-wide with proper desktop/menu integration). Both are built for x86_64 — no other Linux architectures are currently packaged.
+KubeVerse packages as an **AppImage** (portable, no installation) and a **`.deb`** (installs system-wide with proper desktop/menu integration) — **the `.deb` is recommended if you're on Ubuntu/Debian**; use the AppImage if you want a portable, no-install option or aren't on a Debian-based distribution. Both are built for x86_64 — no other Linux architectures are currently packaged.
 
 #### AppImage
 
 The portable option — runs directly, no package manager or installation step required:
 
-1. Download `KubeVerse-4.3.2-linux-x86_64.AppImage` from the v4.3.2 GitHub Release.
+1. Download `KubeVerse-4.3.4-linux-x86_64.AppImage` from the v4.3.4 GitHub Release.
 2. Make it executable and run it:
 
 ```bash
-chmod +x KubeVerse-4.3.2-linux-x86_64.AppImage
-./KubeVerse-4.3.2-linux-x86_64.AppImage
+chmod +x KubeVerse-4.3.4-linux-x86_64.AppImage
+./KubeVerse-4.3.4-linux-x86_64.AppImage
 ```
 
 This has been verified to run as a standalone AppImage; it is not guaranteed to work identically across every Linux distribution.
 
-#### Debian / Ubuntu
+#### Debian / Ubuntu (recommended)
 
-`KubeVerse-4.3.2-linux-amd64.deb` is intended for Debian/Ubuntu-based distributions and installs KubeVerse with a proper application menu entry and dock icon:
+`KubeVerse-4.3.4-linux-amd64.deb` is the easiest option for Debian/Ubuntu-based distributions and installs KubeVerse with a proper application menu entry and dock icon:
 
 ```bash
-sudo apt install ./KubeVerse-4.3.2-linux-amd64.deb
+sudo apt install ./KubeVerse-4.3.4-linux-amd64.deb
 ```
 
 > Without an AppImage integration tool (e.g. `AppImageLauncher`) installed on your system, the AppImage won't get a desktop menu entry or a proper dock icon on some desktop environments — this is standard AppImage behavior, not specific to KubeVerse. The `.deb` install doesn't have this limitation.
@@ -130,8 +130,8 @@ sudo apt install ./KubeVerse-4.3.2-linux-amd64.deb
 
 KubeVerse packages as an **NSIS installer**:
 
-1. Open the [v4.3.2 GitHub Release](https://github.com/Rohitpr05/KubeVerse/releases).
-2. Download `KubeVerse-4.3.2-win-x64.exe`.
+1. Open the [v4.3.4 GitHub Release](https://github.com/Rohitpr05/KubeVerse/releases).
+2. Download `KubeVerse-4.3.4-win-x64.exe`.
 3. Run the installer and follow the prompts.
 4. Launch KubeVerse from the Start Menu or your desktop shortcut.
 
