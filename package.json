@@ -17,6 +17,6 @@
     "version:set": "node scripts/set-version.js"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.5"
   }
 }
