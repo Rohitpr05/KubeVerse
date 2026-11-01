@@ -17,7 +17,7 @@
     "@kubeverse/shared": "4.3.4",
     "fastify": "^5.12.1",
     "yaml": "^2.8.0",
-    "zod": "^3.23.8",
+    "zod": "^4.6.6",
     "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {
